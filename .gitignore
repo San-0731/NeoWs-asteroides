@@ -1,0 +1,20 @@
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+#cache
+__pycache__/
+*.pyc
+#PERSONAL
+Guia_NAS.txt
+
+#Ignorar Archivos
+.~lock.*#
+/datos/*.csv
+/datos/cache_neows.json
