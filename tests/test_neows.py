@@ -9,7 +9,7 @@ import Neows
 
 from neo_app.procesamiento import construir_datos
 from neo_app.graficas import construccion_grafica
-from neo_app.fechas import solicitar_fechas
+from neo_app.fechas import solicitar_fechas, validar_rango
 
 import matplotlib
 
@@ -207,6 +207,21 @@ class SolicitarFechasTests(unittest.TestCase):
         self.assertEqual(fecha, "2024-05-20")
         self.assertEqual(fecha_final, "2024-05-27")
         self.assertIsInstance(fecha_final, str)
+
+
+class ValidarRangoTests(unittest.TestCase):
+    def test_formato_de_fecha_invalido_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            validar_rango("2024-5-20", "2024-05-21")
+
+    def test_fecha_final_anterior_al_inicio_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            validar_rango("2024-05-20", "2024-05-19")
+
+    def test_recorta_rango_mayor_a_siete_dias(self):
+        resultado = validar_rango("2024-05-20", "2024-06-20")
+
+        self.assertEqual(resultado, ("2024-05-20", "2024-05-27", True))
 
 
 class ConstruirDatosTests(unittest.TestCase):
