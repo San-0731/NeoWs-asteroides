@@ -16,5 +16,4 @@ Guia_NAS.txt
 
 #Ignorar Archivos
 .~lock.*#
-/datos/*.csv
-/datos/cache_neows.json
+/datos/
