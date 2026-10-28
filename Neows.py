@@ -1,4 +1,5 @@
 import json
+import logging
 import requests #permite emular metodos del protocolo HTTP dando como respuesta un objeto de los datos obtenidos respuesta del servidor
 from datetime import datetime
 from pathlib import Path
@@ -11,10 +12,39 @@ from neo_app.graficas import construccion_grafica
 from neo_app.exportacion import exportar_a_csv
 
 DIRECTORIO_DATOS = Path(__file__).resolve().parent / "datos"
+logger = logging.getLogger(__name__)
 
 def mostrar_resultados(resultados):
     for resultado in resultados:
         print(json.dumps(resultado, indent=4))
+
+def obtener_datos(fecha, fecha_final, cache):
+    clave = (fecha, fecha_final)
+    entrada = cache.get(clave)
+    archivo_cache = DIRECTORIO_DATOS / "cache_neows.json"
+
+    if entrada is not None and esta_vencida(entrada, fecha_final):
+        del cache[clave]
+        try:
+            guardar_cache(cache, archivo_cache)
+        except OSError as error:
+            logger.warning("No se pudo guardar el caché: %s", error)
+        entrada = None
+
+    if entrada is not None:
+        return entrada["respuesta"], True
+
+    datos = peticion(fecha, fecha_final)
+    cache[clave] = {
+        "respuesta": datos,
+        "guardado_en": datetime.now().astimezone().isoformat(),
+    }
+    try:
+        guardar_cache(cache, archivo_cache)
+    except OSError as error:
+        logger.warning("No se pudo guardar el caché: %s", error)
+
+    return datos, False
 
 def main():
     DIRECTORIO_DATOS.mkdir(parents=True, exist_ok=True)
@@ -46,25 +76,10 @@ def main():
         if opc == 1:
             try:
                 fecha, fecha_final = solicitar_fechas()
-                clave = (fecha, fecha_final)
-                entrada = cache.get(clave)
-
-                if entrada is not None and esta_vencida(entrada, fecha_final):
-                    del cache[clave]
-                    guardar_cache(cache, cache_archivo)
-                    entrada = None
-
-                if entrada is not None:
-                    datos = entrada["respuesta"]
+                datos, desde_cache = obtener_datos(fecha, fecha_final, cache)
+                if desde_cache:
                     print("Respuesta cargada desde el caché.")
                 else:
-                    datos = peticion(fecha, fecha_final)
-                    fecha_y_hora = datetime.now().astimezone().isoformat()
-                    cache[clave] = {
-                        "respuesta": datos,
-                        "guardado_en": fecha_y_hora,
-                    }
-                    guardar_cache(cache, cache_archivo)
                     print(f"Petición para {fecha} - {fecha_final} realizada con éxito.")
 
                 resultados = None

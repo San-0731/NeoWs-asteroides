@@ -85,6 +85,112 @@ class FlujoCacheTests(unittest.TestCase):
         self.assertEqual(cache_guardado[clave]["respuesta"], respuesta_nueva)
 
 
+class ObtenerDatosTests(unittest.TestCase):
+    def test_usa_entrada_vigente_del_cache(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "cache"}
+        cache = {
+            (fecha, fecha): {
+                "respuesta": respuesta,
+                "guardado_en": datetime.now().astimezone().isoformat(),
+            }
+        }
+
+        with (
+            patch.object(Neows, "peticion") as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+            patch("builtins.print") as imprimir,
+            patch("builtins.input") as leer_entrada,
+        ):
+            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertTrue(desde_cache)
+        peticion.assert_not_called()
+        guardar_cache.assert_not_called()
+        imprimir.assert_not_called()
+        leer_entrada.assert_not_called()
+
+    def test_consulta_api_y_guarda_rango_ausente_en_cache(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "api"}
+        cache = {}
+
+        with (
+            patch.object(Neows, "peticion", return_value=respuesta) as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        peticion.assert_called_once_with(fecha, fecha)
+        guardar_cache.assert_called_once_with(
+            cache,
+            Neows.DIRECTORIO_DATOS / "cache_neows.json",
+        )
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+
+    def test_consulta_api_y_actualiza_entrada_vencida(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "nuevo"}
+        cache = {
+            (fecha, fecha): {
+                "respuesta": {"dato": "antiguo"},
+                "guardado_en": (
+                    datetime.now().astimezone() - timedelta(hours=13)
+                ).isoformat(),
+            }
+        }
+
+        with (
+            patch.object(Neows, "peticion", return_value=respuesta) as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        peticion.assert_called_once_with(fecha, fecha)
+        self.assertEqual(guardar_cache.call_count, 2)
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+
+    def test_propaga_error_de_red_sin_guardar_cache(self):
+        fecha = date.today().isoformat()
+        cache = {}
+
+        with (
+            patch.object(
+                Neows,
+                "peticion",
+                side_effect=Neows.requests.exceptions.ConnectionError("sin conexión"),
+            ),
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            with self.assertRaises(Neows.requests.exceptions.ConnectionError):
+                Neows.obtener_datos(fecha, fecha, cache)
+
+        guardar_cache.assert_not_called()
+        self.assertNotIn((fecha, fecha), cache)
+
+    def test_fallo_al_guardar_avisa_y_devuelve_datos_de_api(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "api"}
+        cache = {}
+
+        with (
+            patch.object(Neows, "peticion", return_value=respuesta),
+            patch.object(Neows, "guardar_cache", side_effect=OSError("disco lleno")),
+            self.assertLogs("Neows", level="WARNING") as avisos,
+        ):
+            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+        self.assertTrue(any("disco lleno" in aviso for aviso in avisos.output))
+
+
 class SolicitarFechasTests(unittest.TestCase):
     def test_fecha_final_vacia_consulta_solo_la_fecha_inicial(self):
         with patch("builtins.input", side_effect=["2024-05-20", ""]):
