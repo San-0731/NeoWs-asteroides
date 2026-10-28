@@ -1,6 +1,7 @@
 import json
 import logging
 import requests #permite emular metodos del protocolo HTTP dando como respuesta un objeto de los datos obtenidos respuesta del servidor
+import matplotlib.pyplot as plt
 from datetime import datetime
 from pathlib import Path
 #-------------------------------
@@ -8,7 +9,11 @@ from neo_app.cache import guardar_cache, cargar_cache, esta_vencida
 from neo_app.fechas import solicitar_fechas
 from neo_app.api import peticion
 from neo_app.procesamiento import construir_datos
-from neo_app.graficas import construccion_grafica
+from neo_app.graficas import (
+    grafica_por_fecha,
+    grafica_distancia_vs_tamaño,
+    grafica_peligrosos_no_peligrosos,
+)
 from neo_app.exportacion import exportar_a_csv
 
 DIRECTORIO_DATOS = Path(__file__).resolve().parent / "datos"
@@ -45,6 +50,43 @@ def obtener_datos(fecha, fecha_final, cache):
         logger.warning("No se pudo guardar el caché: %s", error)
 
     return datos, False
+
+def mostrar_figura(figura):
+    figura_consola = plt.figure()
+    canvas = figura_consola.canvas
+    canvas.figure = figura
+    figura.set_canvas(canvas)
+    plt.show()
+
+def menu_graficas(fechas, conteos, resultados):
+    graficas = {
+        1: lambda: grafica_por_fecha(fechas, conteos),
+        2: lambda: grafica_distancia_vs_tamaño(resultados),
+        3: lambda: grafica_peligrosos_no_peligrosos(resultados),
+    }
+
+    while True:
+        print("\nGráficas disponibles:")
+        print("1. Cantidad de objetos por fecha")
+        print("2. Distancia de aproximación vs. tamaño")
+        print("3. Asteroides peligrosos vs. no peligrosos")
+        print("4. Volver al menú principal")
+
+        try:
+            opcion = int(input("Seleccione una gráfica: "))
+        except ValueError:
+            print("Entrada no válida. Ingrese un número.")
+            continue
+
+        if opcion == 4:
+            return
+
+        crear_grafica = graficas.get(opcion)
+        if crear_grafica is None:
+            print("Opción no válida. Intente nuevamente.")
+            continue
+
+        mostrar_figura(crear_grafica())
 
 def main():
     DIRECTORIO_DATOS.mkdir(parents=True, exist_ok=True)
@@ -98,7 +140,7 @@ def main():
             if resultados is None:
                 print("Primero realice una petición y construya los datos con las opciones 1 y 2.")
             else:
-                construccion_grafica(fechas_grafica, conteos, resultados)
+                menu_graficas(fechas_grafica, conteos, resultados)
 
         elif opc == 4:
             if resultados is None:

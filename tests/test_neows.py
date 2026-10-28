@@ -8,7 +8,7 @@ from unittest.mock import patch
 import Neows
 
 from neo_app.procesamiento import construir_datos
-from neo_app.graficas import construccion_grafica
+from neo_app.graficas import grafica_peligrosos_no_peligrosos
 from neo_app.fechas import solicitar_fechas, validar_rango
 
 import matplotlib
@@ -16,6 +16,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from neo_app.exportacion import exportar_a_csv
 
@@ -266,47 +267,66 @@ class ConstruccionGraficaTests(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
 
-    def test_grafica_datos_incompletos_sin_pasarlos_al_scatter(self):
+    def test_grafica_peligrosos_y_no_peligrosos_devuelve_barras_conteo(self):
         resultados = [
-            {
-                "Close_Approach_Distance_(km)": 1000.0,
-                "Estimated_Diameter_(Km)": 0.2,
-                "Threat_Level": True,
-                "Fecha": "2024-01-01",
-            },
-            {
-                "Close_Approach_Distance_(km)": None,
-                "Estimated_Diameter_(Km)": 0.3,
-                "Threat_Level": False,
-            },
-            {
-                "Close_Approach_Distance_(km)": 2000.0,
-                "Estimated_Diameter_(Km)": None,
-                "Threat_Level": None,
-            },
+            {"Threat_Level": True},
+            {"Threat_Level": True},
+            {"Threat_Level": False},
+            {"Threat_Level": None},
         ]
 
+        figura = grafica_peligrosos_no_peligrosos(resultados)
+        ejes = figura.axes[0]
+
+        self.assertEqual(
+            [barra.get_height() for barra in ejes.patches],
+            [2, 1],
+        )
+        self.assertEqual(
+            [etiqueta.get_text() for etiqueta in ejes.get_xticklabels()],
+            ["Peligrosos", "No Peligrosos"],
+        )
+
+    def test_mostrar_figura_conecta_la_figura_al_backend_de_pyplot(self):
+        figura = Figure()
+
+        with patch.object(Neows.plt, "show") as mostrar:
+            Neows.mostrar_figura(figura)
+
+        self.assertIs(plt.gcf(), figura)
+        mostrar.assert_called_once_with()
+
+    def test_submenu_invoca_cada_grafica_y_muestra_su_figura(self):
+        figura = plt.figure()
+        fechas = ["2024-01-01"]
+        conteos = [1]
+        resultados = [{"Threat_Level": True}]
+
         with (
-            patch.object(plt, "show") as show,
-            patch.object(plt, "scatter", wraps=plt.scatter) as scatter,
-            patch.object(plt, "bar", wraps=plt.bar) as bar,
+            patch("builtins.input", side_effect=["1", "2", "3", "4"]),
+            patch.object(
+                Neows,
+                "grafica_por_fecha",
+                return_value=figura,
+            ) as grafica_fecha,
+            patch.object(
+                Neows,
+                "grafica_distancia_vs_tamaño",
+                return_value=figura,
+            ) as grafica_distancia,
+            patch.object(
+                Neows,
+                "grafica_peligrosos_no_peligrosos",
+                return_value=figura,
+            ) as grafica_peligrosos,
+            patch.object(Neows.plt, "show") as mostrar,
         ):
-            construccion_grafica(["2024-01-01"], [3], resultados)
+            Neows.menu_graficas(fechas, conteos, resultados)
 
-        scatter.assert_called_once_with([1000.0], [0.2])
-        self.assertEqual(bar.call_args_list[1].args, ("Peligrosos", 1))
-        self.assertEqual(bar.call_args_list[2].args, ("No Peligrosos", 1))
-        self.assertEqual(show.call_count, 3)
-
-    def test_grafica_listas_vacias_sin_error(self):
-        with (
-            patch.object(plt, "show") as show,
-            patch.object(plt, "scatter", wraps=plt.scatter) as scatter,
-        ):
-            construccion_grafica([], [], [])
-
-        scatter.assert_called_once_with([], [])
-        self.assertEqual(show.call_count, 3)
+        grafica_fecha.assert_called_once_with(fechas, conteos)
+        grafica_distancia.assert_called_once_with(resultados)
+        grafica_peligrosos.assert_called_once_with(resultados)
+        self.assertEqual(mostrar.call_count, 3)
 
 
 class ExportacionCsvTests(unittest.TestCase):
