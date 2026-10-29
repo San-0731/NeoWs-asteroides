@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt #Permite crear graficos de manera sencilla y rapida
 from matplotlib.figure import Figure
 
 def grafica_por_fecha(fechas, conteos):

@@ -8,7 +8,11 @@ from unittest.mock import patch
 import Neows
 
 from neo_app.procesamiento import construir_datos
-from neo_app.graficas import grafica_peligrosos_no_peligrosos
+from neo_app.graficas import (
+    grafica_distancia_vs_tamaño,
+    grafica_peligrosos_no_peligrosos,
+    grafica_por_fecha,
+)
 from neo_app.fechas import solicitar_fechas, validar_rango
 
 import matplotlib
@@ -266,6 +270,43 @@ class ConstruirDatosTests(unittest.TestCase):
 class ConstruccionGraficaTests(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
+
+    def test_grafica_por_fecha_devuelve_barras_con_las_alturas_correctas(self):
+        figura = grafica_por_fecha(
+            ["2024-01-01", "2024-01-02"],
+            [3, 5],
+        )
+        ejes = figura.axes[0]
+
+        self.assertEqual(
+            [barra.get_height() for barra in ejes.patches],
+            [3, 5],
+        )
+        self.assertEqual(
+            [etiqueta.get_text() for etiqueta in ejes.get_xticklabels()],
+            ["2024-01-01", "2024-01-02"],
+        )
+
+    def test_grafica_distancia_tamano_omite_datos_incompletos(self):
+        resultados = [
+            {
+                "Close_Approach_Distance_(km)": 1000.0,
+                "Estimated_Diameter_(Km)": 0.2,
+            },
+            {
+                "Close_Approach_Distance_(km)": None,
+                "Estimated_Diameter_(Km)": 0.3,
+            },
+            {
+                "Close_Approach_Distance_(km)": 2000.0,
+                "Estimated_Diameter_(Km)": None,
+            },
+        ]
+
+        figura = grafica_distancia_vs_tamaño(resultados)
+        coordenadas = figura.axes[0].collections[0].get_offsets()
+
+        self.assertEqual(coordenadas.tolist(), [[1000.0, 0.2]])
 
     def test_grafica_peligrosos_y_no_peligrosos_devuelve_barras_conteo(self):
         resultados = [
