@@ -66,11 +66,21 @@ El programa muestra un menú de 5 opciones:
 |---|---|
 | 1. Realizar petición a la API de NASA | Pide las fechas y consulta NeoWs, o usa el caché si ya tiene esa consulta. |
 | 2. Construir datos y mostrar resultados | Procesa la respuesta e imprime un registro por asteroide. |
-| 3. Construir gráficos | Abre las tres gráficas. Cierra cada ventana para ver la siguiente. |
-| 4. Guardar resultados a CSV | Agrega los resultados a `datos/Historial_Consultas.csv`. |
+| 3. Construir gráficos | Abre un submenú para elegir una de las tres gráficas. |
+| 4. Guardar resultados a CSV | Agrega los resultados al archivo CSV en la carpeta de datos del usuario. |
 | 5. Salir | Cierra el programa. |
 
 **El orden importa:** las opciones 3 y 4 necesitan haber ejecutado antes la 1 y la 2.
+
+### Ubicación de los datos
+
+El caché y el CSV se guardan en la carpeta de datos del usuario que determina
+`platformdirs`, bajo el nombre de la aplicación `NeoWs-Asteroides`. La ruta
+depende del sistema operativo y ya no está dentro de la carpeta del proyecto.
+Al iniciar, la aplicación crea esa carpeta si todavía no existe.
+
+En esa ubicación se guardan `cache_neows.json` y `Historial_Consultas.csv`.
+También queda reservada `settings.json` para los ajustes de la aplicación.
 
 ### Fechas
 
@@ -105,15 +115,13 @@ Si un dato no viene en la respuesta de la API, el campo queda en `null` y ese re
 
 ## Cómo funciona el caché
 
-Las respuestas se guardan en `datos/cache_neows.json`, con el rango de fechas exacto como clave. Si repites un rango que ya consultaste, el programa lo carga del caché sin pedirlo otra vez a la API y sin necesidad de internet.
+Las respuestas se guardan en `cache_neows.json`, dentro de la carpeta de datos del usuario, con el rango de fechas exacto como clave. Si repites un rango que ya consultaste, el programa lo carga del caché sin pedirlo otra vez a la API y sin necesidad de internet.
 
 La duración depende de la fecha final del rango:
 
 - **Permanente:** si la consulta se guardó después de la fecha final del rango (un rango que ya terminó).
 - **12 horas:** si se guardó antes de que terminara el rango, es decir, rangos que llegan a hoy o al futuro. NASA puede agregar objetos nuevos o corregir órbitas, así que esos datos se renuevan.
 - **Cada rango es independiente:** `2026-08-01 – 2026-08-07` y `2026-08-01 – 2026-08-05` son consultas distintas y cada una hace su propia petición.
-
-La carpeta `datos/` se crea sola al iniciar el programa y está en el `.gitignore`.
 
 ## Estructura del proyecto
 
@@ -123,6 +131,7 @@ La carpeta `datos/` se crea sola al iniciar el programa y está en el `.gitignor
 ├── neo_app/
 │   ├── api.py                # Petición a NeoWs y lectura de la API key
 │   ├── cache.py              # Caché en JSON con caducidad y guardado seguro
+│   ├── config.py             # Rutas de datos del usuario
 │   ├── fechas.py             # Solicitud y validación de fechas
 │   ├── procesamiento.py      # Convierte la respuesta de la API en registros
 │   ├── graficas.py           # Las tres gráficas (matplotlib)
@@ -130,7 +139,6 @@ La carpeta `datos/` se crea sola al iniciar el programa y está en el `.gitignor
 ├── tests/
 │   ├── test_cache.py
 │   └── test_neows.py
-├── datos/                    # Se genera solo: caché y CSV (ignorada por Git)
 ├── requirements.txt
 └── .gitignore
 ```

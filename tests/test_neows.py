@@ -33,7 +33,12 @@ class FlujoCacheTests(unittest.TestCase):
 
             with (
                 patch("builtins.input", return_value="5"),
-                patch.object(Neows, "DIRECTORIO_DATOS", directorio_datos),
+                patch("neo_app.config.DIRECTORIO_DATOS", directorio_datos),
+                patch.object(
+                    Neows,
+                    "ARCHIVO_CACHE",
+                    directorio_datos / "cache_neows.json",
+                ),
                 patch.object(Neows, "cargar_cache", return_value={}),
             ):
                 Neows.main()
@@ -132,7 +137,7 @@ class ObtenerDatosTests(unittest.TestCase):
         peticion.assert_called_once_with(fecha, fecha)
         guardar_cache.assert_called_once_with(
             cache,
-            Neows.DIRECTORIO_DATOS / "cache_neows.json",
+            Neows.ARCHIVO_CACHE,
         )
         self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
 

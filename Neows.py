@@ -3,7 +3,6 @@ import logging
 import requests #permite emular metodos del protocolo HTTP dando como respuesta un objeto de los datos obtenidos respuesta del servidor
 import matplotlib.pyplot as plt
 from datetime import datetime
-from pathlib import Path
 #-------------------------------
 from neo_app.cache import guardar_cache, cargar_cache, esta_vencida
 from neo_app.fechas import solicitar_fechas
@@ -15,8 +14,12 @@ from neo_app.graficas import (
     grafica_peligrosos_no_peligrosos,
 )
 from neo_app.exportacion import exportar_a_csv
+from neo_app.config import (
+    ARCHIVO_CACHE,
+    ARCHIVO_CSV,
+    prepara_directorios_datos
+)
 
-DIRECTORIO_DATOS = Path(__file__).resolve().parent / "datos"
 logger = logging.getLogger(__name__)
 
 def mostrar_resultados(resultados):
@@ -26,12 +29,11 @@ def mostrar_resultados(resultados):
 def obtener_datos(fecha, fecha_final, cache):
     clave = (fecha, fecha_final)
     entrada = cache.get(clave)
-    archivo_cache = DIRECTORIO_DATOS / "cache_neows.json"
 
     if entrada is not None and esta_vencida(entrada, fecha_final):
         del cache[clave]
         try:
-            guardar_cache(cache, archivo_cache)
+            guardar_cache(cache, ARCHIVO_CACHE)
         except OSError as error:
             logger.warning("No se pudo guardar el caché: %s", error)
         entrada = None
@@ -45,7 +47,7 @@ def obtener_datos(fecha, fecha_final, cache):
         "guardado_en": datetime.now().astimezone().isoformat(),
     }
     try:
-        guardar_cache(cache, archivo_cache)
+        guardar_cache(cache, ARCHIVO_CACHE)
     except OSError as error:
         logger.warning("No se pudo guardar el caché: %s", error)
 
@@ -89,16 +91,15 @@ def menu_graficas(fechas, conteos, resultados):
         mostrar_figura(crear_grafica())
 
 def main():
-    DIRECTORIO_DATOS.mkdir(parents=True, exist_ok=True)
+    prepara_directorios_datos()
     datos = None
     resultados = None
     fechas_grafica = None
     conteos = None
     opc = 0
     cache = {}
-    cache_archivo = DIRECTORIO_DATOS / "cache_neows.json"
     try:
-        cache = cargar_cache(cache_archivo)
+        cache = cargar_cache(ARCHIVO_CACHE)
     except (FileNotFoundError, json.JSONDecodeError) as error:
         print(f"No se pudo cargar el caché; se iniciará vacío: {error}")
 
@@ -148,7 +149,7 @@ def main():
             else:
                 exportar_a_csv(
                     resultados,
-                    DIRECTORIO_DATOS / "Historial_Consultas.csv",
+                    ARCHIVO_CSV,
                 )
                 print("Datos exportados sin problemas.")
 
