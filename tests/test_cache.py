@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,7 +19,9 @@ class EstaVencidaTests(unittest.TestCase):
         guardado_en = datetime.now().astimezone() - timedelta(hours=13)
         entrada = {"guardado_en": guardado_en.isoformat()}
 
-        self.assertTrue(esta_vencida(entrada, guardado_en.date().isoformat()))
+        fecha_final_utc = guardado_en.astimezone(timezone.utc).date().isoformat()
+
+        self.assertTrue(esta_vencida(entrada, fecha_final_utc))
 
     def test_entrada_guardada_despues_de_la_fecha_final_es_permanente(self):
         guardado_en = datetime.now().astimezone() - timedelta(days=2)
@@ -27,6 +29,23 @@ class EstaVencidaTests(unittest.TestCase):
         entrada = {"guardado_en": guardado_en.isoformat()}
 
         self.assertFalse(esta_vencida(entrada, fecha_final))
+
+    def test_compara_fecha_de_guardado_convertida_a_utc(self):
+        ahora_utc = datetime(2024, 1, 2, 0, 0, tzinfo=timezone.utc)
+        guardado_en = (
+            ahora_utc - timedelta(hours=13)
+        ).astimezone(timezone(timedelta(hours=14)))
+        entrada = {"guardado_en": guardado_en.isoformat()}
+
+        class RelojCongelado(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return ahora_utc
+
+        with patch("neo_app.cache.datetime", RelojCongelado):
+            vencida = esta_vencida(entrada, "2024-01-01")
+
+        self.assertTrue(vencida)
 
 
 class CargarCacheTests(unittest.TestCase):
@@ -36,14 +55,17 @@ class CargarCacheTests(unittest.TestCase):
         registros = [
             {
                 "fecha": "2024-01-01",
-                "fecha_final": guardado_vencido.date().isoformat(),
+                "fecha_final": (
+                    guardado_vencido.astimezone(timezone.utc).date().isoformat()
+                ),
                 "respuesta": {"dato": "vencido"},
                 "guardado_en": guardado_vencido.isoformat(),
             },
             {
                 "fecha": "2024-01-02",
                 "fecha_final": (
-                    guardado_permanente.date() - timedelta(days=1)
+                    guardado_permanente.astimezone(timezone.utc).date()
+                    - timedelta(days=1)
                 ).isoformat(),
                 "respuesta": {"dato": "permanente"},
                 "guardado_en": guardado_permanente.isoformat(),

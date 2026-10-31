@@ -443,6 +443,46 @@ class ExportacionCsvTests(unittest.TestCase):
         self.assertEqual(filas[0]["Threat_Level"], "True")
         self.assertTrue(filas[0]["Fecha Importación"])
 
+    def test_no_exporta_pareja_fecha_nombre_duplicada(self):
+        resultado = {
+            "Fecha": "2024-01-01",
+            "Name": "Asteroide de prueba",
+            "Estimated_Diameter_(Km)": 0.25,
+            "Threat_Level": True,
+            "Close_Approach_Distance_(km)": 1250.0,
+            "Close_Approach_Velocity_(km/h)": 18000.0,
+        }
+        mismo_asteroide = {
+            **resultado,
+            "Estimated_Diameter_(Km)": 0.3,
+        }
+
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo_csv = Path(directorio) / "resultados.csv"
+            exportar_a_csv([resultado, mismo_asteroide], str(archivo_csv))
+            exportar_a_csv([mismo_asteroide], str(archivo_csv))
+
+            with archivo_csv.open(newline="", encoding="utf-8") as archivo:
+                filas = list(csv.DictReader(archivo))
+
+        self.assertEqual(len(filas), 1)
+        self.assertEqual(filas[0]["Estimated_Diameter_(Km)"], "0.25")
+
+    def test_conserva_registros_sin_nombre_para_no_descartar_datos(self):
+        resultados = [
+            {"Fecha": "2024-01-01", "Name": None},
+            {"Fecha": "2024-01-01", "Name": None},
+        ]
+
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo_csv = Path(directorio) / "resultados.csv"
+            exportar_a_csv(resultados, str(archivo_csv))
+
+            with archivo_csv.open(newline="", encoding="utf-8") as archivo:
+                filas = list(csv.DictReader(archivo))
+
+        self.assertEqual(len(filas), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
