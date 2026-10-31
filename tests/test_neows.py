@@ -55,7 +55,11 @@ class FlujoCacheTests(unittest.TestCase):
                 Neows, "solicitar_fechas",
                 return_value=("2024-05-20", "2024-05-20"),
             ),
-            patch.object(Neows, "peticion", return_value=respuesta_cruda),
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta_cruda, False),
+            ),
             patch.object(Neows, "guardar_cache"),
             patch.object(Neows, "construir_datos", return_value=([], [], [])) as construir,
             patch.object(Neows, "mostrar_resultados"),
@@ -63,6 +67,27 @@ class FlujoCacheTests(unittest.TestCase):
             Neows.main()
 
         construir.assert_called_once_with(respuesta_cruda)
+
+    def test_avisa_si_la_peticion_usa_demo_key(self):
+        respuesta = {"near_earth_objects": {}}
+
+        with (
+            patch("builtins.input", side_effect=["1", "5"]),
+            patch.object(Neows, "prepara_directorios_datos"),
+            patch.object(Neows, "cargar_cache", return_value={}),
+            patch.object(
+                Neows,
+                "solicitar_fechas",
+                return_value=("2024-05-20", "2024-05-20"),
+            ),
+            patch.object(Neows, "peticion", return_value=(respuesta, True)),
+            patch.object(Neows, "guardar_cache"),
+            patch("builtins.print") as imprimir,
+        ):
+            Neows.main()
+
+        mensajes = [str(llamada) for llamada in imprimir.call_args_list]
+        self.assertTrue(any("DEMO_KEY" in mensaje for mensaje in mensajes))
 
     def test_consulta_rango_vencido_durante_sesion_actualiza_cache(self):
         fecha_futura = (date.today() + timedelta(days=1)).isoformat()
@@ -84,7 +109,11 @@ class FlujoCacheTests(unittest.TestCase):
                 Neows, "solicitar_fechas",
                 return_value=(fecha_futura, fecha_futura),
             ),
-            patch.object(Neows, "peticion", return_value=respuesta_nueva) as peticion,
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta_nueva, False),
+            ) as peticion,
             patch.object(Neows, "guardar_cache") as guardar,
         ):
             Neows.main()
@@ -112,10 +141,11 @@ class ObtenerDatosTests(unittest.TestCase):
             patch("builtins.print") as imprimir,
             patch("builtins.input") as leer_entrada,
         ):
-            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
 
         self.assertIs(datos, respuesta)
         self.assertTrue(desde_cache)
+        self.assertFalse(uso_demo)
         peticion.assert_not_called()
         guardar_cache.assert_not_called()
         imprimir.assert_not_called()
@@ -127,13 +157,18 @@ class ObtenerDatosTests(unittest.TestCase):
         cache = {}
 
         with (
-            patch.object(Neows, "peticion", return_value=respuesta) as peticion,
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta, True),
+            ) as peticion,
             patch.object(Neows, "guardar_cache") as guardar_cache,
         ):
-            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
 
         self.assertIs(datos, respuesta)
         self.assertFalse(desde_cache)
+        self.assertTrue(uso_demo)
         peticion.assert_called_once_with(fecha, fecha)
         guardar_cache.assert_called_once_with(
             cache,
@@ -154,13 +189,18 @@ class ObtenerDatosTests(unittest.TestCase):
         }
 
         with (
-            patch.object(Neows, "peticion", return_value=respuesta) as peticion,
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta, False),
+            ) as peticion,
             patch.object(Neows, "guardar_cache") as guardar_cache,
         ):
-            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
 
         self.assertIs(datos, respuesta)
         self.assertFalse(desde_cache)
+        self.assertFalse(uso_demo)
         peticion.assert_called_once_with(fecha, fecha)
         self.assertEqual(guardar_cache.call_count, 2)
         self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
@@ -189,14 +229,15 @@ class ObtenerDatosTests(unittest.TestCase):
         cache = {}
 
         with (
-            patch.object(Neows, "peticion", return_value=respuesta),
+            patch.object(Neows, "peticion", return_value=(respuesta, True)),
             patch.object(Neows, "guardar_cache", side_effect=OSError("disco lleno")),
             self.assertLogs("Neows", level="WARNING") as avisos,
         ):
-            datos, desde_cache = Neows.obtener_datos(fecha, fecha, cache)
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
 
         self.assertIs(datos, respuesta)
         self.assertFalse(desde_cache)
+        self.assertTrue(uso_demo)
         self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
         self.assertTrue(any("disco lleno" in aviso for aviso in avisos.output))
 

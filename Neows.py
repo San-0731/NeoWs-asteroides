@@ -6,7 +6,7 @@ from datetime import datetime
 #-------------------------------
 from neo_app.cache import guardar_cache, cargar_cache, esta_vencida
 from neo_app.fechas import solicitar_fechas
-from neo_app.api import peticion
+from neo_app.api import peticion, LimiteApiError
 from neo_app.procesamiento import construir_datos
 from neo_app.graficas import (
     grafica_por_fecha,
@@ -39,9 +39,9 @@ def obtener_datos(fecha, fecha_final, cache):
         entrada = None
 
     if entrada is not None:
-        return entrada["respuesta"], True
+        return entrada["respuesta"], True, False
 
-    datos = peticion(fecha, fecha_final)
+    datos, es_demo = peticion(fecha, fecha_final)
     cache[clave] = {
         "respuesta": datos,
         "guardado_en": datetime.now().astimezone().isoformat(),
@@ -51,7 +51,7 @@ def obtener_datos(fecha, fecha_final, cache):
     except OSError as error:
         logger.warning("No se pudo guardar el caché: %s", error)
 
-    return datos, False
+    return datos, False, es_demo
 
 def mostrar_figura(figura):
     figura_consola = plt.figure()
@@ -119,13 +119,25 @@ def main():
         if opc == 1:
             try:
                 fecha, fecha_final = solicitar_fechas()
-                datos, desde_cache = obtener_datos(fecha, fecha_final, cache)
+                datos, desde_cache, es_demo = obtener_datos(
+                    fecha,
+                    fecha_final,
+                    cache,
+                )
                 if desde_cache:
                     print("Respuesta cargada desde el caché.")
                 else:
+                    if es_demo:
+                        print(
+                            "Aviso: se está usando DEMO_KEY de NASA; "
+                            "esta clave tiene límites de uso más bajos."
+                        )
                     print(f"Petición para {fecha} - {fecha_final} realizada con éxito.")
 
                 resultados = None
+            except LimiteApiError as error:
+                print(error)
+                continue
             except requests.exceptions.RequestException as error:
                 print(f"Error al realizar la petición: {error}")
                 continue
