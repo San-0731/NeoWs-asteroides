@@ -20,7 +20,7 @@ class ObtenerApiKeyTests(unittest.TestCase):
             )
 
             with (
-                patch("neo_app.api.ARCHIVO_AJUSTES", archivo),
+                patch("neo_app.config.ARCHIVO_AJUSTES", archivo),
                 patch.dict(os.environ, {"NASA_API_KEY": "clave_del_entorno"}, clear=True),
             ):
                 resultado = obtener_api_key()
@@ -32,7 +32,7 @@ class ObtenerApiKeyTests(unittest.TestCase):
             archivo_ausente = Path(directorio) / "no_existe.json"
 
             with (
-                patch("neo_app.api.ARCHIVO_AJUSTES", archivo_ausente),
+                patch("neo_app.config.ARCHIVO_AJUSTES", archivo_ausente),
                 patch.dict(os.environ, {"NASA_API_KEY": "clave_del_entorno"}, clear=True),
             ):
                 resultado = obtener_api_key()
@@ -44,7 +44,7 @@ class ObtenerApiKeyTests(unittest.TestCase):
             archivo_ausente = Path(directorio) / "no_existe.json"
 
             with (
-                patch("neo_app.api.ARCHIVO_AJUSTES", archivo_ausente),
+                patch("neo_app.config.ARCHIVO_AJUSTES", archivo_ausente),
                 patch.dict(os.environ, {}, clear=True),
             ):
                 resultado = obtener_api_key()

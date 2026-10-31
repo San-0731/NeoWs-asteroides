@@ -2,27 +2,18 @@ import requests
 import os
 import json
 from dotenv import load_dotenv
-from neo_app.config import ARCHIVO_AJUSTES
+from neo_app.config import ARCHIVO_AJUSTES, leer_ajustes
 
 load_dotenv()
 class LimiteApiError(Exception):
     """NASA rechazó la petición porque se alcanzó el límite de uso."""
 
 def obtener_api_key():
-    if ARCHIVO_AJUSTES.exists():
-        try:
-            with open(ARCHIVO_AJUSTES, encoding="utf-8") as archivo:
-                ajustes = json.load(archivo)
-        except json.JSONDecodeError as error:
-            raise ValueError("El archivo de ajustes no contiene un JSON valido") from error
+    ajustes = leer_ajustes()
+    clave_ajustes = ajustes.get("NASA_API_KEY", "").strip()
 
-        if not isinstance(ajustes, dict):
-            raise ValueError("El archivo debe contener un objeto JSON")
-
-        clave_ajustes = ajustes.get("NASA_API_KEY")
-        if isinstance(clave_ajustes, str) and clave_ajustes.strip():
-            clave = clave_ajustes.strip()
-            return clave, clave == "DEMO_KEY"
+    if clave_ajustes:
+        return clave_ajustes, clave_ajustes == "DEMO_KEY"
 
     clave_entorno = os.getenv("NASA_API_KEY", "").strip()
     if clave_entorno:
