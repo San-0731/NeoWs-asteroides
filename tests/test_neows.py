@@ -8,14 +8,19 @@ from unittest.mock import patch
 import Neows
 
 from neo_app.procesamiento import construir_datos
-from neo_app.graficas import construccion_grafica
-from neo_app.fechas import solicitar_fechas
+from neo_app.graficas import (
+    grafica_distancia_vs_tamaño,
+    grafica_peligrosos_no_peligrosos,
+    grafica_por_fecha,
+)
+from neo_app.fechas import solicitar_fechas, validar_rango
 
 import matplotlib
 
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 from neo_app.exportacion import exportar_a_csv
 
@@ -28,7 +33,12 @@ class FlujoCacheTests(unittest.TestCase):
 
             with (
                 patch("builtins.input", return_value="5"),
-                patch.object(Neows, "DIRECTORIO_DATOS", directorio_datos),
+                patch("neo_app.config.DIRECTORIO_DATOS", directorio_datos),
+                patch.object(
+                    Neows,
+                    "ARCHIVO_CACHE",
+                    directorio_datos / "cache_neows.json",
+                ),
                 patch.object(Neows, "cargar_cache", return_value={}),
             ):
                 Neows.main()
@@ -45,7 +55,11 @@ class FlujoCacheTests(unittest.TestCase):
                 Neows, "solicitar_fechas",
                 return_value=("2024-05-20", "2024-05-20"),
             ),
-            patch.object(Neows, "peticion", return_value=respuesta_cruda),
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta_cruda, False),
+            ),
             patch.object(Neows, "guardar_cache"),
             patch.object(Neows, "construir_datos", return_value=([], [], [])) as construir,
             patch.object(Neows, "mostrar_resultados"),
@@ -53,6 +67,27 @@ class FlujoCacheTests(unittest.TestCase):
             Neows.main()
 
         construir.assert_called_once_with(respuesta_cruda)
+
+    def test_avisa_si_la_peticion_usa_demo_key(self):
+        respuesta = {"near_earth_objects": {}}
+
+        with (
+            patch("builtins.input", side_effect=["1", "5"]),
+            patch.object(Neows, "prepara_directorios_datos"),
+            patch.object(Neows, "cargar_cache", return_value={}),
+            patch.object(
+                Neows,
+                "solicitar_fechas",
+                return_value=("2024-05-20", "2024-05-20"),
+            ),
+            patch.object(Neows, "peticion", return_value=(respuesta, True)),
+            patch.object(Neows, "guardar_cache"),
+            patch("builtins.print") as imprimir,
+        ):
+            Neows.main()
+
+        mensajes = [str(llamada) for llamada in imprimir.call_args_list]
+        self.assertTrue(any("DEMO_KEY" in mensaje for mensaje in mensajes))
 
     def test_consulta_rango_vencido_durante_sesion_actualiza_cache(self):
         fecha_futura = (date.today() + timedelta(days=1)).isoformat()
@@ -74,7 +109,11 @@ class FlujoCacheTests(unittest.TestCase):
                 Neows, "solicitar_fechas",
                 return_value=(fecha_futura, fecha_futura),
             ),
-            patch.object(Neows, "peticion", return_value=respuesta_nueva) as peticion,
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta_nueva, False),
+            ) as peticion,
             patch.object(Neows, "guardar_cache") as guardar,
         ):
             Neows.main()
@@ -83,6 +122,124 @@ class FlujoCacheTests(unittest.TestCase):
         self.assertEqual(guardar.call_count, 2)
         cache_guardado = guardar.call_args.args[0]
         self.assertEqual(cache_guardado[clave]["respuesta"], respuesta_nueva)
+
+
+class ObtenerDatosTests(unittest.TestCase):
+    def test_usa_entrada_vigente_del_cache(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "cache"}
+        cache = {
+            (fecha, fecha): {
+                "respuesta": respuesta,
+                "guardado_en": datetime.now().astimezone().isoformat(),
+            }
+        }
+
+        with (
+            patch.object(Neows, "peticion") as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+            patch("builtins.print") as imprimir,
+            patch("builtins.input") as leer_entrada,
+        ):
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertTrue(desde_cache)
+        self.assertFalse(uso_demo)
+        peticion.assert_not_called()
+        guardar_cache.assert_not_called()
+        imprimir.assert_not_called()
+        leer_entrada.assert_not_called()
+
+    def test_consulta_api_y_guarda_rango_ausente_en_cache(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "api"}
+        cache = {}
+
+        with (
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta, True),
+            ) as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        self.assertTrue(uso_demo)
+        peticion.assert_called_once_with(fecha, fecha)
+        guardar_cache.assert_called_once_with(
+            cache,
+            Neows.ARCHIVO_CACHE,
+        )
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+
+    def test_consulta_api_y_actualiza_entrada_vencida(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "nuevo"}
+        cache = {
+            (fecha, fecha): {
+                "respuesta": {"dato": "antiguo"},
+                "guardado_en": (
+                    datetime.now().astimezone() - timedelta(hours=13)
+                ).isoformat(),
+            }
+        }
+
+        with (
+            patch.object(
+                Neows,
+                "peticion",
+                return_value=(respuesta, False),
+            ) as peticion,
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        self.assertFalse(uso_demo)
+        peticion.assert_called_once_with(fecha, fecha)
+        self.assertEqual(guardar_cache.call_count, 2)
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+
+    def test_propaga_error_de_red_sin_guardar_cache(self):
+        fecha = date.today().isoformat()
+        cache = {}
+
+        with (
+            patch.object(
+                Neows,
+                "peticion",
+                side_effect=Neows.requests.exceptions.ConnectionError("sin conexión"),
+            ),
+            patch.object(Neows, "guardar_cache") as guardar_cache,
+        ):
+            with self.assertRaises(Neows.requests.exceptions.ConnectionError):
+                Neows.obtener_datos(fecha, fecha, cache)
+
+        guardar_cache.assert_not_called()
+        self.assertNotIn((fecha, fecha), cache)
+
+    def test_fallo_al_guardar_avisa_y_devuelve_datos_de_api(self):
+        fecha = date.today().isoformat()
+        respuesta = {"dato": "api"}
+        cache = {}
+
+        with (
+            patch.object(Neows, "peticion", return_value=(respuesta, True)),
+            patch.object(Neows, "guardar_cache", side_effect=OSError("disco lleno")),
+            self.assertLogs("Neows", level="WARNING") as avisos,
+        ):
+            datos, desde_cache, uso_demo = Neows.obtener_datos(fecha, fecha, cache)
+
+        self.assertIs(datos, respuesta)
+        self.assertFalse(desde_cache)
+        self.assertTrue(uso_demo)
+        self.assertEqual(cache[(fecha, fecha)]["respuesta"], respuesta)
+        self.assertTrue(any("disco lleno" in aviso for aviso in avisos.output))
 
 
 class SolicitarFechasTests(unittest.TestCase):
@@ -101,6 +258,21 @@ class SolicitarFechasTests(unittest.TestCase):
         self.assertEqual(fecha, "2024-05-20")
         self.assertEqual(fecha_final, "2024-05-27")
         self.assertIsInstance(fecha_final, str)
+
+
+class ValidarRangoTests(unittest.TestCase):
+    def test_formato_de_fecha_invalido_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            validar_rango("2024-5-20", "2024-05-21")
+
+    def test_fecha_final_anterior_al_inicio_lanza_value_error(self):
+        with self.assertRaises(ValueError):
+            validar_rango("2024-05-20", "2024-05-19")
+
+    def test_recorta_rango_mayor_a_siete_dias(self):
+        resultado = validar_rango("2024-05-20", "2024-06-20")
+
+        self.assertEqual(resultado, ("2024-05-20", "2024-05-27", True))
 
 
 class ConstruirDatosTests(unittest.TestCase):
@@ -145,47 +317,103 @@ class ConstruccionGraficaTests(unittest.TestCase):
     def tearDown(self):
         plt.close("all")
 
-    def test_grafica_datos_incompletos_sin_pasarlos_al_scatter(self):
+    def test_grafica_por_fecha_devuelve_barras_con_las_alturas_correctas(self):
+        figura = grafica_por_fecha(
+            ["2024-01-01", "2024-01-02"],
+            [3, 5],
+        )
+        ejes = figura.axes[0]
+
+        self.assertEqual(
+            [barra.get_height() for barra in ejes.patches],
+            [3, 5],
+        )
+        self.assertEqual(
+            [etiqueta.get_text() for etiqueta in ejes.get_xticklabels()],
+            ["2024-01-01", "2024-01-02"],
+        )
+
+    def test_grafica_distancia_tamano_omite_datos_incompletos(self):
         resultados = [
             {
                 "Close_Approach_Distance_(km)": 1000.0,
                 "Estimated_Diameter_(Km)": 0.2,
-                "Threat_Level": True,
-                "Fecha": "2024-01-01",
             },
             {
                 "Close_Approach_Distance_(km)": None,
                 "Estimated_Diameter_(Km)": 0.3,
-                "Threat_Level": False,
             },
             {
                 "Close_Approach_Distance_(km)": 2000.0,
                 "Estimated_Diameter_(Km)": None,
-                "Threat_Level": None,
             },
         ]
 
+        figura = grafica_distancia_vs_tamaño(resultados)
+        coordenadas = figura.axes[0].collections[0].get_offsets()
+
+        self.assertEqual(coordenadas.tolist(), [[1000.0, 0.2]])
+
+    def test_grafica_peligrosos_y_no_peligrosos_devuelve_barras_conteo(self):
+        resultados = [
+            {"Threat_Level": True},
+            {"Threat_Level": True},
+            {"Threat_Level": False},
+            {"Threat_Level": None},
+        ]
+
+        figura = grafica_peligrosos_no_peligrosos(resultados)
+        ejes = figura.axes[0]
+
+        self.assertEqual(
+            [barra.get_height() for barra in ejes.patches],
+            [2, 1],
+        )
+        self.assertEqual(
+            [etiqueta.get_text() for etiqueta in ejes.get_xticklabels()],
+            ["Peligrosos", "No Peligrosos"],
+        )
+
+    def test_mostrar_figura_conecta_la_figura_al_backend_de_pyplot(self):
+        figura = Figure()
+
+        with patch.object(Neows.plt, "show") as mostrar:
+            Neows.mostrar_figura(figura)
+
+        self.assertIs(plt.gcf(), figura)
+        mostrar.assert_called_once_with()
+
+    def test_submenu_invoca_cada_grafica_y_muestra_su_figura(self):
+        figura = plt.figure()
+        fechas = ["2024-01-01"]
+        conteos = [1]
+        resultados = [{"Threat_Level": True}]
+
         with (
-            patch.object(plt, "show") as show,
-            patch.object(plt, "scatter", wraps=plt.scatter) as scatter,
-            patch.object(plt, "bar", wraps=plt.bar) as bar,
+            patch("builtins.input", side_effect=["1", "2", "3", "4"]),
+            patch.object(
+                Neows,
+                "grafica_por_fecha",
+                return_value=figura,
+            ) as grafica_fecha,
+            patch.object(
+                Neows,
+                "grafica_distancia_vs_tamaño",
+                return_value=figura,
+            ) as grafica_distancia,
+            patch.object(
+                Neows,
+                "grafica_peligrosos_no_peligrosos",
+                return_value=figura,
+            ) as grafica_peligrosos,
+            patch.object(Neows.plt, "show") as mostrar,
         ):
-            construccion_grafica(["2024-01-01"], [3], resultados)
+            Neows.menu_graficas(fechas, conteos, resultados)
 
-        scatter.assert_called_once_with([1000.0], [0.2])
-        self.assertEqual(bar.call_args_list[1].args, ("Peligrosos", 1))
-        self.assertEqual(bar.call_args_list[2].args, ("No Peligrosos", 1))
-        self.assertEqual(show.call_count, 3)
-
-    def test_grafica_listas_vacias_sin_error(self):
-        with (
-            patch.object(plt, "show") as show,
-            patch.object(plt, "scatter", wraps=plt.scatter) as scatter,
-        ):
-            construccion_grafica([], [], [])
-
-        scatter.assert_called_once_with([], [])
-        self.assertEqual(show.call_count, 3)
+        grafica_fecha.assert_called_once_with(fechas, conteos)
+        grafica_distancia.assert_called_once_with(resultados)
+        grafica_peligrosos.assert_called_once_with(resultados)
+        self.assertEqual(mostrar.call_count, 3)
 
 
 class ExportacionCsvTests(unittest.TestCase):
@@ -214,6 +442,46 @@ class ExportacionCsvTests(unittest.TestCase):
         self.assertEqual(filas[0]["Estimated_Diameter_(Km)"], "0.25")
         self.assertEqual(filas[0]["Threat_Level"], "True")
         self.assertTrue(filas[0]["Fecha Importación"])
+
+    def test_no_exporta_pareja_fecha_nombre_duplicada(self):
+        resultado = {
+            "Fecha": "2024-01-01",
+            "Name": "Asteroide de prueba",
+            "Estimated_Diameter_(Km)": 0.25,
+            "Threat_Level": True,
+            "Close_Approach_Distance_(km)": 1250.0,
+            "Close_Approach_Velocity_(km/h)": 18000.0,
+        }
+        mismo_asteroide = {
+            **resultado,
+            "Estimated_Diameter_(Km)": 0.3,
+        }
+
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo_csv = Path(directorio) / "resultados.csv"
+            exportar_a_csv([resultado, mismo_asteroide], str(archivo_csv))
+            exportar_a_csv([mismo_asteroide], str(archivo_csv))
+
+            with archivo_csv.open(newline="", encoding="utf-8") as archivo:
+                filas = list(csv.DictReader(archivo))
+
+        self.assertEqual(len(filas), 1)
+        self.assertEqual(filas[0]["Estimated_Diameter_(Km)"], "0.25")
+
+    def test_conserva_registros_sin_nombre_para_no_descartar_datos(self):
+        resultados = [
+            {"Fecha": "2024-01-01", "Name": None},
+            {"Fecha": "2024-01-01", "Name": None},
+        ]
+
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo_csv = Path(directorio) / "resultados.csv"
+            exportar_a_csv(resultados, str(archivo_csv))
+
+            with archivo_csv.open(newline="", encoding="utf-8") as archivo:
+                filas = list(csv.DictReader(archivo))
+
+        self.assertEqual(len(filas), 2)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 import json
 
@@ -6,13 +6,15 @@ CACHE_TTL = timedelta(hours=12)
 
 
 def esta_vencida(entrada, fecha_final):
-    guardado_en = datetime.fromisoformat(entrada["guardado_en"])
+    guardado_en = datetime.fromisoformat(
+        entrada["guardado_en"]
+    ).astimezone(timezone.utc)
     fecha_final = date.fromisoformat(fecha_final)
 
     if guardado_en.date() > fecha_final:
         return False
 
-    return datetime.now().astimezone() - guardado_en >= CACHE_TTL
+    return datetime.now(timezone.utc) - guardado_en >= CACHE_TTL
 
 
 def cargar_cache(archivo):

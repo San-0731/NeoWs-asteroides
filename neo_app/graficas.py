@@ -1,35 +1,61 @@
-import matplotlib.pyplot as plt #Permite crear graficos de manera sencilla y rapida
+from matplotlib.figure import Figure
 
-def construccion_grafica(fechas, conteos, resultados):
+def grafica_por_fecha(fechas, conteos):
+    figura=Figure()
+    ejes = figura.subplots()
+    ejes.bar(fechas, conteos)
+    ejes.set_xlabel("Fechas")
+    ejes.set_ylabel("Cantidad")
+    ejes.set_title("Distribución por fecha")
+    figura.tight_layout()
+    return figura
 
-    #Primero realizaremos el grafico de cantidad por dia
-    # Realizamos un gráfico de barras para mostrar la cantidad de objetos cercanos a la Tierra por día.
-    plt.bar(fechas, conteos)
-    plt.xlabel("Fecha")
-    plt.ylabel("Cantidad de Objetos Cercanos")
-    plt.title("Distribución de Objetos Cercanos a la Tierra por Fecha")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.show()
+def grafica_distancia_vs_tamaño(resultados):
+    figura = Figure()
+    ejes = figura.subplots()
 
-    #Ahora realizaremos el grafico de Distancia vs Tamaño
-    # Realizamos un gráfico de dispersión para mostrar la relación entre la distancia de aproximación
-    resultados_scatter = [r for r in resultados if r["Close_Approach_Distance_(km)"] is not None and r["Estimated_Diameter_(Km)"] is not None]
-    plt.scatter([r["Close_Approach_Distance_(km)"] for r in resultados_scatter], [r["Estimated_Diameter_(Km)"] for r in resultados_scatter])
-    plt.xlabel("Distancia de Aproximación (km)")
-    plt.ylabel("Tamaño Estimado (km)")
-    plt.title("Relación entre Distancia de Aproximación y Tamaño")
-    plt.tight_layout()
-    plt.show()
+    resultados_validos = [
+        resultado
+        for resultado in resultados
+        if resultado["Close_Approach_Distance_(km)"] is not None
+        and resultado["Estimated_Diameter_(Km)"] is not None
+    ]
 
-    #Ahora realizaremos el grafico de peligrosos vs No peligrosos siendo una comparación
-    # Contamos la cantidad de objetos peligrosos y no peligrosos.
-    Peligrosos = sum(1 for r in resultados if r["Threat_Level"] == True)
-    No_Peligrosos = sum(1 for r in resultados if r["Threat_Level"] == False)
-    plt.bar("Peligrosos", Peligrosos, color='red')
-    plt.bar("No Peligrosos", No_Peligrosos, color='blue')
-    plt.xlabel("Nivel de Amenaza")
-    plt.ylabel("Cantidad de Objetos")
-    plt.title("Comparación de Objetos Peligrosos y No Peligrosos")
-    plt.tight_layout()
-    plt.show()   
+    distancias = [
+        resultado["Close_Approach_Distance_(km)"]
+        for resultado in resultados_validos
+    ]
+    tamanos = [
+        resultado["Estimated_Diameter_(Km)"]
+        for resultado in resultados_validos
+    ]
+
+    ejes.scatter(distancias, tamanos)
+    ejes.set_xlabel("Distancia de aproximación (km)")
+    ejes.set_ylabel("Diámetro estimado (km)")
+    ejes.set_title("Distancia de aproximación vs. tamaño")
+    figura.tight_layout()
+
+    return figura
+
+
+def grafica_peligrosos_no_peligrosos(resultados):
+    cantidad_peligrosos = sum(
+        resultado["Threat_Level"] is True for resultado in resultados
+    )
+    cantidad_no_peligrosos = sum(
+        resultado["Threat_Level"] is False for resultado in resultados
+    )
+
+    figura = Figure()
+    ejes = figura.subplots()
+    ejes.bar(
+        ["Peligrosos", "No Peligrosos"],
+        [cantidad_peligrosos, cantidad_no_peligrosos],
+        color=["red", "blue"],
+    )
+    ejes.set_xlabel("Nivel de amenaza")
+    ejes.set_ylabel("Cantidad de objetos")
+    ejes.set_title("Comparación de objetos peligrosos y no peligrosos")
+    figura.tight_layout()
+    return figura
