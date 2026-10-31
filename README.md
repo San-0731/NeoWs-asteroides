@@ -74,7 +74,7 @@ El programa muestra un menú de 5 opciones:
 
 ### Ubicación de los datos
 
-El caché y el CSV se guardan en la carpeta de datos del usuario que determina
+El caché y el CSV se guardan en la carpeta de ~/.local/share/NeoWs-Asteroides del usuario que determina
 `platformdirs`, bajo el nombre de la aplicación `NeoWs-Asteroides`. La ruta
 depende del sistema operativo y ya no está dentro de la carpeta del proyecto.
 Al iniciar, la aplicación crea esa carpeta si todavía no existe.
