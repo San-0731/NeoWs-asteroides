@@ -7,6 +7,7 @@ def grafica_por_fecha(fechas, conteos):
     ejes.set_xlabel("Fechas")
     ejes.set_ylabel("Cantidad")
     ejes.set_title("Distribución por fecha")
+    ejes.tick_params(axis='x', labelrotation=45)
     figura.tight_layout()
     return figura
 
