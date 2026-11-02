@@ -1,12 +1,11 @@
 import json
-import logging
 import requests #permite emular metodos del protocolo HTTP dando como respuesta un objeto de los datos obtenidos respuesta del servidor
 import matplotlib.pyplot as plt
-from datetime import datetime
 #-------------------------------
-from neo_app.cache import guardar_cache, cargar_cache, esta_vencida
+from neo_app.cache import cargar_cache
 from neo_app.fechas import solicitar_fechas
-from neo_app.api import peticion, LimiteApiError
+from neo_app.api import LimiteApiError
+from neo_app.consulta import obtener_datos
 from neo_app.procesamiento import construir_datos
 from neo_app.graficas import (
     grafica_por_fecha,
@@ -14,44 +13,11 @@ from neo_app.graficas import (
     grafica_peligrosos_no_peligrosos,
 )
 from neo_app.exportacion import exportar_a_csv
-from neo_app.config import (
-    ARCHIVO_CACHE,
-    ARCHIVO_CSV,
-    prepara_directorios_datos
-)
-
-logger = logging.getLogger(__name__)
+from neo_app.config import ARCHIVO_CACHE, ARCHIVO_CSV, prepara_directorios_datos
 
 def mostrar_resultados(resultados):
     for resultado in resultados:
         print(json.dumps(resultado, indent=4))
-
-def obtener_datos(fecha, fecha_final, cache):
-    clave = (fecha, fecha_final)
-    entrada = cache.get(clave)
-
-    if entrada is not None and esta_vencida(entrada, fecha_final):
-        del cache[clave]
-        try:
-            guardar_cache(cache, ARCHIVO_CACHE)
-        except OSError as error:
-            logger.warning("No se pudo guardar el caché: %s", error)
-        entrada = None
-
-    if entrada is not None:
-        return entrada["respuesta"], True, False
-
-    datos, es_demo = peticion(fecha, fecha_final)
-    cache[clave] = {
-        "respuesta": datos,
-        "guardado_en": datetime.now().astimezone().isoformat(),
-    }
-    try:
-        guardar_cache(cache, ARCHIVO_CACHE)
-    except OSError as error:
-        logger.warning("No se pudo guardar el caché: %s", error)
-
-    return datos, False, es_demo
 
 def mostrar_figura(figura):
     figura_consola = plt.figure()
@@ -123,6 +89,7 @@ def main():
                     fecha,
                     fecha_final,
                     cache,
+                    ARCHIVO_CACHE,
                 )
                 if desde_cache:
                     print("Respuesta cargada desde el caché.")

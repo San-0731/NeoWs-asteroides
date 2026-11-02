@@ -141,6 +141,7 @@ La caducidad se calcula usando tiempos en UTC y depende de la fecha final del ra
 ├── neo_app/
 │   ├── api.py                # Petición a NeoWs y lectura de la API key
 │   ├── cache.py              # Caché en JSON con caducidad y guardado seguro
+│   ├── consulta.py           # Obtención de datos desde caché o API
 │   ├── config.py             # Rutas de datos del usuario
 │   ├── fechas.py             # Solicitud y validación de fechas
 │   ├── procesamiento.py      # Convierte la respuesta de la API en registros
