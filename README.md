@@ -14,7 +14,7 @@ Aplicación en Python para consultar los asteroides cercanos a la Tierra usando 
 - Clave de NASA leída, en orden, desde los ajustes del usuario, `NASA_API_KEY` o `DEMO_KEY`.
 - Interfaz gráfica con tabla de resultados, tres gráficas en pestañas separadas y exportación CSV.
 - Configuración de la API key desde la interfaz, guardada en los ajustes del usuario.
-- Pruebas unitarias para API, caché, fechas, gráficas, procesamiento y exportación.
+- Pruebas unitarias para API, caché, fechas, gráficas, procesamiento, exportación y controladores de la GUI.
 
 ## Requisitos
 
@@ -167,6 +167,7 @@ La caducidad se calcula usando tiempos en UTC y depende de la fecha final del ra
 │   ├── graficas.py           # Las tres gráficas (matplotlib)
 │   └── exportacion.py        # Exportación a CSV
 ├── tests/
+│   ├── test_app.py
 │   ├── test_api.py
 │   ├── test_cache.py
 │   └── test_neows.py

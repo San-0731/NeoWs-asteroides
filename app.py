@@ -50,6 +50,53 @@ def trabajo_consulta(fecha, fecha_final, fecha_recortada, cache, resultados_pend
             ("error", None, f"La respuesta de NASA tiene un formato inesperado: {error}")
         )
 
+
+def actualizar_info_api(etiqueta_api, etiqueta_limite):
+    _, es_demo = obtener_api_key()
+    etiqueta_api.configure(text=f"API Key: {'DEMO_KEY' if es_demo else 'Personal'}")
+    etiqueta_limite.configure(
+        text=f"Límite de peticiones: {'30' if es_demo else '1.000'} por hora"
+    )
+
+
+def aplicar_resultado_consulta(
+    tipo,
+    datos_resultado,
+    mensaje,
+    tabla_resultados,
+    resultados_actuales,
+    actualizar_graficas,
+    tabs_zona_central,
+    boton_consultar,
+    estado,
+):
+    estado.configure(text=mensaje)
+    if tipo == "success":
+        resultados, fechas_grafica, conteos = datos_resultado
+        resultados_actuales[:] = resultados
+
+        for item in tabla_resultados.get_children():
+            tabla_resultados.delete(item)
+
+        for resultado in resultados:
+            tabla_resultados.insert(
+                "",
+                "end",
+                values=(
+                    resultado["Fecha"],
+                    resultado["Name"],
+                    resultado["Estimated_Diameter_(Km)"],
+                    resultado["Threat_Level"],
+                    resultado["Close_Approach_Distance_(km)"],
+                    resultado["Close_Approach_Velocity_(km/h)"],
+                ),
+            )
+        actualizar_graficas(fechas_grafica, conteos, resultados)
+        tabs_zona_central.set("Resultados")
+
+    boton_consultar.configure(state="normal")
+
+
 def consultar(
     app,
     entrada_inicial,
@@ -250,11 +297,9 @@ def ventana_api_key(app, actualizar_info_api):
     entrada_api_key.pack(pady=(0, 20), padx=20, fill="x")
 
     def guardar_api_key():
-
-        ajustes = leer_ajustes()
-        ajustes["NASA_API_KEY"] = entrada_api_key.get().strip()
-
         try:
+            ajustes = leer_ajustes()
+            ajustes["NASA_API_KEY"] = entrada_api_key.get().strip()
             guardar_ajustes(ajustes)
         except (OSError, ValueError) as error:
             messagebox.showerror("Error", f"No se pudo guardar la API key: {error}", parent=ventana)
@@ -295,12 +340,11 @@ def main():
     entrada_inicial, entrada_final, boton_consultar, boton_exportar, boton_api_key = panel_izquierdo(app)
     tabla_resultados, tabs_zona_central, contenedor_graficas_fechas, contenedor_graficas_distancia_tamano, contenedor_graficas_nivel_amenaza = zona_central(app)
     usuario, api_key, limite, estado = barra_inferior(app)
-    def actualizar_info_api():
-        _, es_demo = obtener_api_key()
-        api_key.configure(text=f"API Key: {'DEMO_KEY' if es_demo else 'Personal'}")
-        limite.configure(text=f"Límite de peticiones: {'30' if es_demo else '1.000'} por hora")
 
-    actualizar_info_api()
+    def refrescar_info_api():
+        actualizar_info_api(api_key, limite)
+
+    refrescar_info_api()
 
     resultados_pendientes = Queue()
     resultados_actuales = []
@@ -315,7 +359,7 @@ def main():
         resultados_pendientes,
     ))
 
-    boton_api_key.configure(command=lambda: ventana_api_key(app, actualizar_info_api))
+    boton_api_key.configure(command=lambda: ventana_api_key(app, refrescar_info_api))
 
     def exportar_resultados():
         if not resultados_actuales:
@@ -364,30 +408,17 @@ def main():
             app.after(100, procesar_resultados)
             return
 
-        estado.configure(text=mensaje)
-        if tipo == "success":
-            resultados, fechas_grafica, conteos = datos_resultado
-            resultados_actuales[:] = resultados
-            for item in tabla_resultados.get_children():
-                tabla_resultados.delete(item)
-
-            for resultado in resultados:
-                tabla_resultados.insert(
-                    "",
-                    "end",
-                    values=(
-                        resultado["Fecha"],
-                        resultado["Name"],
-                        resultado["Estimated_Diameter_(Km)"],
-                        resultado["Threat_Level"],
-                        resultado["Close_Approach_Distance_(km)"],
-                        resultado["Close_Approach_Velocity_(km/h)"],
-                    ),
-                )
-            actualizar_graficas(fechas_grafica, conteos, resultados)
-            tabs_zona_central.set("Resultados")
-
-        boton_consultar.configure(state="normal")
+        aplicar_resultado_consulta(
+            tipo,
+            datos_resultado,
+            mensaje,
+            tabla_resultados,
+            resultados_actuales,
+            actualizar_graficas,
+            tabs_zona_central,
+            boton_consultar,
+            estado,
+        )
         app.after(100, procesar_resultados)
 
     app.after(100, procesar_resultados)
