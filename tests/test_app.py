@@ -3,6 +3,8 @@ from queue import Queue
 from unittest.mock import Mock, patch
 
 import app
+from matplotlib.colors import to_rgba
+from matplotlib.figure import Figure
 from requests.exceptions import ConnectionError
 
 
@@ -16,16 +18,59 @@ class EntradaFalsa:
 
 class TablaFalsa:
     def __init__(self):
-        self.filas = []
+        self.filas = {}
+        self.siguiente_id = 0
+        self.estilos_tags = {}
 
     def get_children(self):
-        return list(range(len(self.filas)))
+        return list(self.filas)
 
     def delete(self, identificador):
         del self.filas[identificador]
 
-    def insert(self, parent, posicion, values):
-        self.filas.append(values)
+    def insert(self, parent, posicion, values, tags=()):
+        identificador = self.siguiente_id
+        self.siguiente_id += 1
+        self.filas[identificador] = (values, tags)
+
+    def item(self, identificador, tags=None):
+        valores, tags_actuales = self.filas[identificador]
+        if tags is not None:
+            tags_actuales = tags
+            self.filas[identificador] = (valores, tags_actuales)
+        return {"tags": tags_actuales}
+
+    def tag_configure(self, nombre, **opciones):
+        self.estilos_tags[nombre] = opciones
+
+
+class SchedulerFalso:
+    def __init__(self):
+        self.callbacks = {}
+        self.siguiente_id = 0
+
+    def after(self, delay, callback):
+        identificador = self.siguiente_id
+        self.siguiente_id += 1
+        self.callbacks[identificador] = callback
+        return identificador
+
+    def after_cancel(self, identificador):
+        self.callbacks.pop(identificador, None)
+
+    def ejecutar_todos(self):
+        while self.callbacks:
+            identificador = min(self.callbacks)
+            callback = self.callbacks.pop(identificador)
+            callback()
+
+
+class LienzoFalso:
+    def __init__(self):
+        self.dibujos = 0
+
+    def draw_idle(self):
+        self.dibujos += 1
 
 
 class ConsultaGuiTests(unittest.TestCase):
@@ -157,7 +202,7 @@ class ConsultaGuiTests(unittest.TestCase):
 
     def test_aplica_resultado_exitoso_a_tabla_graficas_y_controles(self):
         tabla = TablaFalsa()
-        tabla.filas = [("fila anterior",)]
+        tabla.filas = {0: (("fila anterior",), ())}
         resultados = []
         graficas = Mock()
         tabs = Mock()
@@ -189,16 +234,16 @@ class ConsultaGuiTests(unittest.TestCase):
 
         self.assertEqual(resultados, nuevos_resultados)
         self.assertEqual(
-            tabla.filas,
+            list(tabla.filas.values()),
             [
-                (
+                ((
                     "2026-10-20",
                     "Asteroide",
                     0.2,
                     True,
                     1200,
                     18000,
-                )
+                ), ("fila_par",))
             ],
         )
         graficas.assert_called_once_with(["2026-10-20"], [1], nuevos_resultados)
@@ -208,7 +253,7 @@ class ConsultaGuiTests(unittest.TestCase):
 
     def test_aplica_error_sin_modificar_resultados_anteriores(self):
         tabla = TablaFalsa()
-        tabla.filas = [("fila anterior",)]
+        tabla.filas = {0: (("fila anterior",), ())}
         resultados = [{"Name": "previo"}]
         estado = Mock()
         boton = Mock()
@@ -228,7 +273,7 @@ class ConsultaGuiTests(unittest.TestCase):
         )
 
         self.assertEqual(resultados, [{"Name": "previo"}])
-        self.assertEqual(tabla.filas, [("fila anterior",)])
+        self.assertEqual(tabla.filas, {0: (("fila anterior",), ())})
         actualizar_graficas.assert_not_called()
         tabs.set.assert_not_called()
         estado.configure.assert_called_once_with(text="Error de red")
@@ -265,6 +310,135 @@ class EtiquetasApiTests(unittest.TestCase):
             "clave-super-secreta",
             etiqueta_clave.configure.call_args.kwargs["text"],
         )
+
+
+class TemaCosmicoTests(unittest.TestCase):
+    def test_aplica_paleta_oscura_y_colores_acento_a_graficos(self):
+        figura = Figure()
+        ejes = figura.subplots()
+        barras = ejes.bar(["A", "B"], [1, 2])
+        puntos = ejes.scatter([1], [2])
+
+        app.aplicar_tema_figura(figura)
+
+        self.assertEqual(figura.get_facecolor(), to_rgba(app.COLORES["fondo"]))
+        self.assertEqual(ejes.get_facecolor(), to_rgba(app.COLORES["panel"]))
+        self.assertEqual(ejes.title.get_color(), app.COLORES["blanco"])
+        self.assertEqual(ejes.xaxis.label.get_color(), app.COLORES["texto_secundario"])
+        self.assertEqual(barras[0].get_facecolor(), to_rgba(app.COLORES["morado"]))
+        self.assertEqual(barras[1].get_facecolor(), to_rgba(app.COLORES["azul"]))
+        self.assertEqual(
+            tuple(puntos.get_facecolors()[0]),
+            to_rgba(app.COLORES["azul"]),
+        )
+        self.assertEqual(
+            ejes.spines["bottom"].get_edgecolor(),
+            to_rgba(app.COLORES["borde"]),
+        )
+        self.assertTrue(ejes.xaxis.get_gridlines()[0].get_visible())
+
+    def test_interpolar_color_calcula_colores_intermedios(self):
+        self.assertEqual(
+            app.interpolar_color("#000000", "#FFFFFF", 0.5),
+            "#808080",
+        )
+
+    def test_animar_tabla_muestra_filas_progresivamente_y_restaura_tonos(self):
+        scheduler = SchedulerFalso()
+        tabla = TablaFalsa()
+        tabla.insert("", "end", ("fila 1",))
+        tabla.insert("", "end", ("fila 2",))
+        animaciones = {}
+
+        app.animar_tabla(scheduler, tabla, animaciones, pasos=3, intervalo=1)
+        tag_inicial = tabla.item(0)["tags"][0]
+        self.assertEqual(tabla.estilos_tags[tag_inicial]["foreground"], app.COLORES["panel"])
+
+        scheduler.ejecutar_todos()
+
+        self.assertEqual(tabla.item(0)["tags"], ("fila_par",))
+        self.assertEqual(tabla.item(1)["tags"], ("fila_impar",))
+        self.assertEqual(animaciones, {})
+
+    def test_animar_figura_restaura_opacidad_original_al_terminar(self):
+        scheduler = SchedulerFalso()
+        figura = Figure()
+        ejes = figura.subplots()
+        linea, = ejes.plot([0, 1], [1, 2])
+        linea.set_alpha(0.7)
+        alphas_originales = [
+            artista.get_alpha()
+            for artista in figura.findobj()
+            if artista is not figura
+            and callable(getattr(artista, "get_alpha", None))
+            and callable(getattr(artista, "set_alpha", None))
+        ]
+        lienzo = LienzoFalso()
+        animaciones = {}
+        opacidades_originales = {}
+
+        app.animar_figura(
+            scheduler,
+            figura,
+            lienzo,
+            animaciones,
+            opacidades_originales,
+            pasos=3,
+            intervalo=1,
+        )
+
+        self.assertEqual(linea.get_alpha(), 0)
+        scheduler.ejecutar_todos()
+
+        self.assertEqual(linea.get_alpha(), 0.7)
+        self.assertEqual(animaciones, {})
+        self.assertGreater(lienzo.dibujos, 1)
+        self.assertEqual(
+            [
+                artista.get_alpha()
+                for artista in figura.findobj()
+                if artista is not figura
+                and callable(getattr(artista, "get_alpha", None))
+                and callable(getattr(artista, "set_alpha", None))
+            ],
+            alphas_originales,
+        )
+
+    def test_interrumpir_y_reiniciar_fade_de_figura_restablece_alpha_final(self):
+        scheduler = SchedulerFalso()
+        figura = Figure()
+        ejes = figura.subplots()
+        linea, = ejes.plot([0, 1], [1, 2])
+        linea.set_alpha(0.7)
+        lienzo = LienzoFalso()
+        animaciones = {}
+        opacidades_originales = {}
+
+        app.animar_figura(
+            scheduler,
+            figura,
+            lienzo,
+            animaciones,
+            opacidades_originales,
+            pasos=4,
+            intervalo=1,
+        )
+        scheduler.callbacks.pop(min(scheduler.callbacks))()
+        self.assertNotEqual(linea.get_alpha(), 0.7)
+
+        app.animar_figura(
+            scheduler,
+            figura,
+            lienzo,
+            animaciones,
+            opacidades_originales,
+            pasos=4,
+            intervalo=1,
+        )
+        scheduler.ejecutar_todos()
+
+        self.assertEqual(linea.get_alpha(), 0.7)
+        self.assertEqual(animaciones, {})
 
 
 class VentanaApiKeyTests(unittest.TestCase):

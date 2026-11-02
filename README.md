@@ -12,7 +12,7 @@ Aplicación en Python para consultar los asteroides cercanos a la Tierra usando 
 - Exportación de los resultados a CSV, evitando duplicados por la pareja fecha del asteroide + nombre.
 - Validación de fechas, manejo de errores de red y aviso específico cuando NASA limita las solicitudes (HTTP 429).
 - Clave de NASA leída, en orden, desde los ajustes del usuario, `NASA_API_KEY` o `DEMO_KEY`.
-- Interfaz gráfica con tabla de resultados, tres gráficas en pestañas separadas y exportación CSV.
+- Interfaz gráfica con tabla de resultados, tres gráficas en pestañas separadas, transiciones de aparición con fade y exportación CSV.
 - Configuración de la API key desde la interfaz, guardada en los ajustes del usuario.
 - Pruebas unitarias para API, caché, fechas, gráficas, procesamiento, exportación y controladores de la GUI.
 
