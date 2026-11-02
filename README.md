@@ -54,6 +54,8 @@ La aplicación busca la clave en este orden:
 
 Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa.
 
+Los cambios se escriben primero en un archivo temporal y después reemplazan `settings.json`, para conservar la configuración anterior si el guardado se interrumpe. Si el archivo contiene JSON inválido, el lector lanza un error claro y no lo sobrescribe; corrígelo manualmente usando el formato anterior.
+
 También puedes agregar manualmente tu clave con este formato:
 
 ```json
