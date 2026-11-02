@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import quote
 from unittest.mock import Mock, patch
 
 import requests
@@ -92,24 +93,52 @@ class PeticionTests(unittest.TestCase):
 
         respuesta.raise_for_status.assert_not_called()
 
-    def test_otro_error_http_se_propaga_sin_convertirse_en_error_de_limite(self):
+    def test_error_http_no_expone_la_api_key_en_la_url(self):
+        api_key = "clave/secreta+prueba"
         respuesta = Mock()
         respuesta.status_code = 500
-        error_http = requests.exceptions.HTTPError("error del servidor")
+        error_http = requests.exceptions.HTTPError(
+            "500 Server Error for url: "
+            f"https://api.nasa.gov/neo/rest/v1/feed?api_key={quote(api_key, safe='')}"
+        )
         respuesta.raise_for_status.side_effect = error_http
 
         with (
             patch(
                 "neo_app.api.obtener_api_key",
-                return_value=("clave_de_prueba", False),
+                return_value=(api_key, False),
             ),
             patch("neo_app.api.requests.get", return_value=respuesta),
         ):
-            with self.assertRaises(requests.exceptions.HTTPError) as contexto:
+            with self.assertRaises(requests.exceptions.RequestException) as contexto:
                 peticion("2024-05-20", "2024-05-20")
 
-        self.assertIs(contexto.exception, error_http)
+        self.assertNotIn(api_key, str(contexto.exception))
+        self.assertNotIn(quote(api_key, safe=""), str(contexto.exception))
+        self.assertIn("api_key=[REDACTED]", str(contexto.exception))
+        self.assertIn("500 Server Error", str(contexto.exception))
         respuesta.raise_for_status.assert_called_once_with()
+
+    def test_error_de_conexion_no_expone_api_key_ni_en_formato_codificado(self):
+        api_key = "clave/secreta+prueba"
+        error_red = requests.exceptions.ConnectionError(
+            "Connection failed for "
+            f"https://api.nasa.gov/feed?api_key={quote(api_key, safe='')}"
+        )
+
+        with (
+            patch(
+                "neo_app.api.obtener_api_key",
+                return_value=(api_key, False),
+            ),
+            patch("neo_app.api.requests.get", side_effect=error_red),
+        ):
+            with self.assertRaises(requests.exceptions.RequestException) as contexto:
+                peticion("2024-05-20", "2024-05-20")
+
+        self.assertNotIn(api_key, str(contexto.exception))
+        self.assertNotIn(quote(api_key, safe=""), str(contexto.exception))
+        self.assertIn("api_key=[REDACTED]", str(contexto.exception))
 
 
 if __name__ == "__main__":
