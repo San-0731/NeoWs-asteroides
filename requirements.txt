@@ -16,3 +16,5 @@ requests==2.34.2
 six==1.17.0
 urllib3==2.8.0
 platformdirs==4.14.0
+customtkinter==6.0.0
+darkdetect==0.8.0

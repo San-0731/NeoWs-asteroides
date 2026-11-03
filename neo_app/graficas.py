@@ -7,10 +7,11 @@ def grafica_por_fecha(fechas, conteos):
     ejes.set_xlabel("Fechas")
     ejes.set_ylabel("Cantidad")
     ejes.set_title("Distribución por fecha")
+    ejes.tick_params(axis='x', labelrotation=45)
     figura.tight_layout()
     return figura
 
-def grafica_distancia_vs_tamaño(resultados):
+def grafica_distancia_vs_tamano(resultados):
     figura = Figure()
     ejes = figura.subplots()
 

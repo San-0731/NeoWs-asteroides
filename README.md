@@ -1,6 +1,6 @@
 # Consulta de Asteroides Cercanos a la Tierra
 
-Aplicación de consola en Python que consulta los asteroides que se acercan a la Tierra en un rango de fechas usando la API **NeoWs** de NASA, y los muestra como registros en consola y en tres gráficas. Guarda las respuestas en un caché local y permite exportar los resultados a CSV.
+Aplicación en Python para consultar los asteroides cercanos a la Tierra usando la API **NeoWs** de NASA. Incluye una interfaz gráfica y una versión de consola. Guarda las respuestas en un caché local y permite exportar los resultados a CSV.
 
 > Proyecto personal e independiente. No está afiliado ni respaldado por NASA.
 
@@ -12,7 +12,9 @@ Aplicación de consola en Python que consulta los asteroides que se acercan a la
 - Exportación de los resultados a CSV, evitando duplicados por la pareja fecha del asteroide + nombre.
 - Validación de fechas, manejo de errores de red y aviso específico cuando NASA limita las solicitudes (HTTP 429).
 - Clave de NASA leída, en orden, desde los ajustes del usuario, `NASA_API_KEY` o `DEMO_KEY`.
-- Pruebas unitarias para API, caché, fechas, gráficas, procesamiento y exportación.
+- Interfaz gráfica con tabla de resultados, tres gráficas en pestañas separadas, transiciones de aparición con fade y exportación CSV.
+- Configuración de la API key desde la interfaz, guardada en los ajustes del usuario.
+- Pruebas unitarias para API, caché, fechas, gráficas, procesamiento, exportación y controladores de la GUI.
 
 ## Requisitos
 
@@ -20,7 +22,7 @@ Aplicación de consola en Python que consulta los asteroides que se acercan a la
 - Conexión a internet para las consultas nuevas.
 - En Ubuntu, dos paquetes del sistema:
   - `python3-venv`, para crear el entorno virtual.
-  - `python3-tk`, para que se abran las ventanas de las gráficas.
+  - `python3-tk`, requerido por la GUI y por las ventanas de las gráficas.
 
 ```bash
 sudo apt update
@@ -50,7 +52,15 @@ La aplicación busca la clave en este orden:
 2. La variable de entorno `NASA_API_KEY` (también se puede definir en un `.env` en la raíz del proyecto).
 3. `DEMO_KEY`, si no encuentra una clave en los pasos anteriores.
 
-Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. Puedes agregar manualmente tu clave con este formato:
+Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. El campo la muestra enmascarada; **Mostrar API** permite verla temporalmente. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa.
+
+Los cambios se escriben primero en un archivo temporal y después reemplazan `settings.json`, para conservar la configuración anterior si el guardado se interrumpe. Si el archivo contiene JSON inválido, el lector lanza un error claro y no lo sobrescribe; corrígelo manualmente usando el formato anterior.
+
+Si `settings.json` está dañado al iniciar la GUI, se muestra un aviso y la ventana abre sin consultar la API hasta que corrijas el archivo. La aplicación no reemplaza ni borra automáticamente tus ajustes.
+
+Si los ajustes se detectan inválidos durante una consulta, la GUI informa que debes revisar `settings.json`, en lugar de presentarlo como un error de procesamiento de la respuesta de NASA.
+
+También puedes agregar manualmente tu clave con este formato:
 
 ```json
 {
@@ -58,7 +68,7 @@ Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía
 }
 ```
 
-La pantalla para editar los ajustes desde la aplicación aún no está implementada. También puedes crear un `.env` en la raíz del proyecto:
+Como alternativa, puedes crear un `.env` en la raíz del proyecto:
 
 ```env
 NASA_API_KEY=tu_clave_aqui
@@ -69,6 +79,20 @@ El `.env` está en `.gitignore`; no compartas ni subas claves reales al reposito
 Si no hay una clave configurada, se usa `DEMO_KEY`, que tiene límites bajos: [30 peticiones por hora y 50 al día por dirección IP](https://api.nasa.gov/assets/html/authentication.html). NASA puede responder HTTP 429 cuando se alcanza el límite; la aplicación muestra un aviso en español y recomienda esperar o configurar una clave propia. Una clave registrada permite 1.000 peticiones por hora. Las consultas servidas desde caché no hacen una petición nueva.
 
 ## Uso
+
+### Interfaz gráfica
+
+Desde la raíz del proyecto, con el entorno virtual activado:
+
+```bash
+python app.py
+```
+
+Ingresa la fecha inicial y, opcionalmente, la fecha final; pulsa **Consultar**. Mientras se procesa, el estado anima `Consultando.` → `Consultando..` → `Consultando...`. Los resultados aparecen en la tabla y las visualizaciones están en la pestaña **Gráficas**, cada una en su propia subpestaña. **Exportar CSV** guarda los resultados de la última consulta exitosa. Las consultas existentes pueden servirse desde el caché sin conexión. Si ocurre un error inesperado, la GUI informa que la consulta falló, registra el tipo de error y vuelve a habilitar el botón.
+
+### Consola
+
+Para usar la versión de consola:
 
 ```bash
 python Neows.py
@@ -88,7 +112,7 @@ El programa muestra un menú de 5 opciones:
 
 ### Ubicación de los datos
 
-El caché, el CSV y los ajustes se guardan en la carpeta de datos del usuario que determina `platformdirs`, usando el autor `San-0731` y el nombre de aplicación `NeoWs-Asteroides`. La ruta depende del sistema operativo y ya no está dentro de la carpeta del proyecto. En Linux normalmente es `~/.local/share/San-0731/NeoWs-Asteroides/`; en Windows y macOS se utiliza la ubicación de datos de usuario correspondiente a cada plataforma.
+El caché, el CSV y los ajustes se guardan en la carpeta de datos del usuario que determina `platformdirs`, usando el autor `San-0731` y el nombre de aplicación `NeoWs-Asteroides`. La ruta depende del sistema operativo y ya no está dentro de la carpeta del proyecto. En Linux normalmente es `~/.local/share/NeoWs-Asteroides`; en Windows y macOS se utiliza la ubicación de datos de usuario correspondiente a cada plataforma.
 
 Al iniciar, la aplicación crea la carpeta y, si falta, `settings.json` con `NASA_API_KEY` vacío. En esa ubicación también se guardan `cache_neows.json` y `Historial_Consultas.csv`.
 
@@ -127,6 +151,10 @@ Si un dato no viene en la respuesta de la API, el campo queda en `null` y ese re
 
 Las respuestas se guardan en `cache_neows.json`, dentro de la carpeta de datos del usuario, con el rango de fechas exacto como clave. Si repites un rango vigente que ya consultaste, el programa lo carga del caché sin pedirlo otra vez a la API y sin necesidad de internet.
 
+La aplicación elimina el parámetro `api_key` de los enlaces recibidos antes de devolver o guardar la respuesta. Al cargar un caché creado por una versión anterior, también limpia esos enlaces y guarda el archivo actualizado.
+
+Si el archivo contiene JSON inválido o registros con una estructura incorrecta, la GUI y la CLI lo mueven a `cache_neows.json.bak` (o a un nombre numerado si ya existe un respaldo) antes de continuar con un caché vacío. Así, la consulta nueva no destruye el archivo original.
+
 La caducidad se calcula usando tiempos en UTC y depende de la fecha final del rango:
 
 - **Permanente:** si la consulta se guardó después de la fecha final del rango (un rango ya terminado).
@@ -138,15 +166,18 @@ La caducidad se calcula usando tiempos en UTC y depende de la fecha final del ra
 ```
 .
 ├── Neows.py                  # Punto de entrada: menú de consola y flujo principal
+├── app.py                    # Punto de entrada: interfaz gráfica CustomTkinter
 ├── neo_app/
 │   ├── api.py                # Petición a NeoWs y lectura de la API key
 │   ├── cache.py              # Caché en JSON con caducidad y guardado seguro
+│   ├── consulta.py           # Obtención de datos desde caché o API
 │   ├── config.py             # Rutas de datos del usuario
 │   ├── fechas.py             # Solicitud y validación de fechas
 │   ├── procesamiento.py      # Convierte la respuesta de la API en registros
 │   ├── graficas.py           # Las tres gráficas (matplotlib)
 │   └── exportacion.py        # Exportación a CSV
 ├── tests/
+│   ├── test_app.py
 │   ├── test_api.py
 │   ├── test_cache.py
 │   └── test_neows.py
@@ -168,14 +199,12 @@ Las pruebas no usan internet ni modifican tu caché ni tu CSV.
 
 - Solo usa el endpoint *Feed* de NeoWs (consulta por fechas). No usa *Lookup* ni *Browse*.
 - El CSV evita filas duplicadas según la pareja fecha del asteroide + nombre. Si falta alguno de esos dos datos, conserva la fila porque no puede determinar con seguridad si es duplicada.
-- Es una aplicación de consola. Hay que tener Python instalado para usarla.
+- Se requiere Python y las dependencias del proyecto; la GUI también necesita Tkinter disponible en el sistema.
 - Solo se ha probado en Ubuntu.
 
 ## Próximos pasos
 
-- [ ] Interfaz gráfica.
 - [ ] Versión portable, para usarla sin instalar Python ni las dependencias.
-- [ ] Pantalla de ajustes para editar la API key sin modificar manualmente `settings.json` ni `.env`.
 - [ ] README en inglés.
 
 ## Créditos
