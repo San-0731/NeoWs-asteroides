@@ -12,6 +12,8 @@ ARCHIVO_CACHE = DIRECTORIO_DATOS / "cache_neows.json"
 ARCHIVO_CSV = DIRECTORIO_DATOS / "Historial_Consultas.csv"
 ARCHIVO_AJUSTES = DIRECTORIO_DATOS / "settings.json"
 
+class AjustesInvalidosError(ValueError):
+    """El archivo de ajustes contiene datos inválidos."""
 
 def prepara_directorios_datos():
     DIRECTORIO_DATOS.mkdir(parents=True, exist_ok=True)
@@ -26,15 +28,19 @@ def leer_ajustes():
     try:
         with ARCHIVO_AJUSTES.open(encoding="utf-8") as archivo:
             ajustes = json.load(archivo)
-    except json.JSONDecodeError as error:
-        raise ValueError("El archivo de ajustes contiene JSON inválido.") from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise AjustesInvalidosError(
+            "El archivo de ajustes contiene JSON inválido."
+        ) from error
 
     if not isinstance(ajustes, dict):
-        raise ValueError("El archivo de ajustes debe contener un objeto JSON.")
+        raise AjustesInvalidosError(
+            "El archivo de ajustes debe contener un objeto JSON."
+        )
 
     ajustes.setdefault("NASA_API_KEY", "")
     if not isinstance(ajustes["NASA_API_KEY"], str):
-        raise ValueError("NASA_API_KEY debe ser texto.")
+        raise AjustesInvalidosError("NASA_API_KEY debe ser texto.")
 
     return ajustes
 

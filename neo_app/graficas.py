@@ -11,7 +11,7 @@ def grafica_por_fecha(fechas, conteos):
     figura.tight_layout()
     return figura
 
-def grafica_distancia_vs_tamaño(resultados):
+def grafica_distancia_vs_tamano(resultados):
     figura = Figure()
     ejes = figura.subplots()
 

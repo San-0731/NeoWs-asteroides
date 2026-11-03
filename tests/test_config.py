@@ -4,7 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from neo_app.config import guardar_ajustes, leer_ajustes, prepara_directorios_datos
+from neo_app.config import (
+    AjustesInvalidosError,
+    guardar_ajustes,
+    leer_ajustes,
+    prepara_directorios_datos,
+)
 
 
 class ConfiguracionTests(unittest.TestCase):
@@ -48,6 +53,23 @@ class ConfiguracionTests(unittest.TestCase):
                 archivo_ajustes.read_text(encoding="utf-8"),
                 contenido_danado,
             )
+
+    def test_errores_de_contenido_de_ajustes_tienen_tipo_especifico(self):
+        contenidos_invalidos = [
+            '{"NASA_API_KEY": ',
+            '[]',
+            '{"NASA_API_KEY": 42}',
+        ]
+
+        with tempfile.TemporaryDirectory() as directorio:
+            for indice, contenido in enumerate(contenidos_invalidos):
+                with self.subTest(contenido=contenido):
+                    archivo_ajustes = Path(directorio) / f"settings-{indice}.json"
+                    archivo_ajustes.write_text(contenido, encoding="utf-8")
+
+                    with patch("neo_app.config.ARCHIVO_AJUSTES", archivo_ajustes):
+                        with self.assertRaises(AjustesInvalidosError):
+                            leer_ajustes()
 
     def test_guardado_interrumpido_conserva_archivo_y_limpia_temporal(self):
         contenido_original = '{"NASA_API_KEY": "clave-anterior"}'

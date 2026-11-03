@@ -1,4 +1,5 @@
 import json
+import logging
 from queue import Empty, Queue
 from threading import Thread
 
@@ -7,18 +8,27 @@ from tkinter import messagebox, ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from requests.exceptions import RequestException
 
-from neo_app.cache import cargar_cache
+from neo_app.cache import CacheFormatError, cargar_cache, respaldar_cache_invalido
 from neo_app.fechas import validar_rango
 from neo_app.api import LimiteApiError, obtener_api_key
 from neo_app.consulta import obtener_datos
 from neo_app.procesamiento import construir_datos
 from neo_app.graficas import (
     grafica_por_fecha,
-    grafica_distancia_vs_tamaño,
+    grafica_distancia_vs_tamano,
     grafica_peligrosos_no_peligrosos,
 )
 from neo_app.exportacion import exportar_a_csv
-from neo_app.config import ARCHIVO_CACHE, ARCHIVO_CSV, DIRECTORIO_DATOS,prepara_directorios_datos, leer_ajustes, guardar_ajustes
+from neo_app.config import (
+    ARCHIVO_CACHE,
+    ARCHIVO_CSV,
+    AjustesInvalidosError,
+    guardar_ajustes,
+    leer_ajustes,
+    prepara_directorios_datos,
+)
+
+logger = logging.getLogger(__name__)
 
 COLORES = {
     "fondo": "#080B1F",
@@ -192,6 +202,33 @@ def animar_figura(
     animaciones[identificador] = app.after(intervalo, lambda: avanzar(1))
 
 
+def iniciar_animacion_consulta(app, estado, animacion):
+    animacion["activa"] = True
+    animacion["puntos"] = 0
+    animar_estado_consulta(app, estado, animacion)
+
+
+def animar_estado_consulta(app, estado, animacion):
+    if not animacion.get("activa"):
+        return
+
+    puntos = animacion.get("puntos", 0) % 3 + 1
+    animacion["puntos"] = puntos
+    estado.configure(text=f"Consultando{'.' * puntos}")
+    animacion["after_id"] = app.after(
+        450,
+        lambda: animar_estado_consulta(app, estado, animacion),
+    )
+
+
+def detener_animacion_consulta(app, animacion):
+    animacion["activa"] = False
+    despues_id = animacion.get("after_id")
+    if despues_id is not None:
+        app.after_cancel(despues_id)
+        animacion["after_id"] = None
+
+
 def trabajo_consulta(fecha, fecha_final, fecha_recortada, cache, resultados_pendientes):
     try:
         datos, desde_cache, es_demo = obtener_datos(
@@ -215,14 +252,29 @@ def trabajo_consulta(fecha, fecha_final, fecha_recortada, cache, resultados_pend
         resultados_pendientes.put(("error", None, f"Error: {error}"))
     except RequestException as error:
         resultados_pendientes.put(("error", None, f"Error de red: {error}"))
+    except AjustesInvalidosError as error:
+        resultados_pendientes.put(
+            ("error", None, f"Los ajustes son inválidos. Revisa settings.json: {error}")
+        )
     except ValueError as error:
         resultados_pendientes.put(("error", None, f"Error al procesar la respuesta: {error}"))
     except (KeyError, TypeError) as error:
         resultados_pendientes.put(
             ("error", None, f"La respuesta de NASA tiene un formato inesperado: {error}")
         )
-
-
+    except Exception as error:
+        logger.error(
+            "Error inesperado durante la consulta (%s).",
+            type(error).__name__,
+        )
+        resultados_pendientes.put(
+            (
+                "error",
+                None,
+                "Ocurrió un error inesperado durante la consulta. "
+                "Revisa la configuración e inténtalo de nuevo.",
+            )
+        )
 def actualizar_info_api(etiqueta_api, etiqueta_limite):
     _, es_demo = obtener_api_key()
     etiqueta_api.configure(text=f"API Key: {'DEMO_KEY' if es_demo else 'Personal'}")
@@ -278,6 +330,7 @@ def consultar(
     cache,
     estado,
     resultados_pendientes,
+    animacion_consulta=None,
 ):
     fecha_inicial = entrada_inicial.get()
     fecha_final_texto = entrada_final.get().strip()
@@ -295,19 +348,35 @@ def consultar(
         estado.configure(text=f"Error de validación: {error}")
         return
 
-    estado.configure(text="Consultando...")
     boton_consultar.configure(state="disabled")
-    Thread(
-        target=trabajo_consulta,
-        args=(
-            fecha,
-            fecha_final,
-            fecha_recortada,
-            cache,
-            resultados_pendientes,
-        ),
-        daemon=True,
-    ).start()
+    if animacion_consulta is not None:
+        iniciar_animacion_consulta(app, estado, animacion_consulta)
+    else:
+        estado.configure(text="Consultando.")
+
+    try:
+        Thread(
+            target=trabajo_consulta,
+            args=(
+                fecha,
+                fecha_final,
+                fecha_recortada,
+                cache,
+                resultados_pendientes,
+            ),
+            daemon=True,
+        ).start()
+    except Exception as error:
+        if animacion_consulta is not None:
+            detener_animacion_consulta(app, animacion_consulta)
+        logger.error(
+            "No se pudo iniciar el hilo de consulta (%s).",
+            type(error).__name__,
+        )
+        boton_consultar.configure(state="normal")
+        estado.configure(
+            text="No se pudo iniciar la consulta. Inténtalo de nuevo."
+        )
 
 def panel_izquierdo(app):
     panel = CTkFrame(
@@ -675,7 +744,7 @@ def ventana_api_key(app, actualizar_info_api):
     ventana = CTkToplevel(app)
     ventana.configure(fg_color=COLORES["fondo"])
     ventana.title("Configurar API Key")
-    ventana.geometry("400x200")
+    ventana.geometry("400x250")
     ventana.resizable(False, False)
 
     CTkLabel(
@@ -690,8 +759,29 @@ def ventana_api_key(app, actualizar_info_api):
         border_color=COLORES["borde"],
         text_color=COLORES["blanco"],
         placeholder_text_color=COLORES["texto_secundario"],
+        show="*",
     )
     entrada_api_key.pack(pady=(0, 20), padx=20, fill="x")
+
+    api_key_visible = False
+
+    def alternar_visibilidad_api_key():
+        nonlocal api_key_visible
+        api_key_visible = not api_key_visible
+        entrada_api_key.configure(show="" if api_key_visible else "*")
+        boton_mostrar.configure(
+            text="Ocultar API" if api_key_visible else "Mostrar API"
+        )
+
+    boton_mostrar = CTkButton(
+        ventana,
+        text="Mostrar API",
+        command=alternar_visibilidad_api_key,
+        fg_color=COLORES["superficie"],
+        hover_color=COLORES["borde"],
+        text_color=COLORES["blanco"],
+    )
+    boton_mostrar.pack(pady=(0, 12))
 
     def guardar_api_key():
         try:
@@ -730,11 +820,25 @@ def main():
         cache = cargar_cache(ARCHIVO_CACHE)
     except FileNotFoundError:
         cache = {}
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, CacheFormatError) as error:
         cache = {}
+        try:
+            respaldo_cache = respaldar_cache_invalido(ARCHIVO_CACHE)
+        except OSError as error_respaldo:
+            messagebox.showerror(
+                "No se pudo respaldar el caché",
+                "No se pudo preservar el archivo de caché inválido. "
+                "La aplicación se cerrará para evitar sobrescribirlo.\n\n"
+                f"Detalle: {error_respaldo}",
+                parent=app,
+            )
+            app.destroy()
+            return
+
         messagebox.showwarning(
             "Caché inválido",
-            "El archivo de caché contiene JSON inválido. Se iniciará un caché vacío.",
+            "El archivo de caché no es válido y se movió a este respaldo:\n"
+            f"{respaldo_cache}\n\nSe iniciará un caché vacío.\n\nDetalle: {error}",
             parent=app,
         )
 
@@ -756,10 +860,22 @@ def main():
     def refrescar_info_api():
         actualizar_info_api(api_key, limite)
 
-    refrescar_info_api()
+    try:
+        refrescar_info_api()
+    except (OSError, ValueError) as error:
+        api_key.configure(text="API Key: No disponible")
+        limite.configure(text="Revisa settings.json")
+        messagebox.showwarning(
+            "Ajustes inválidos",
+            "No se pudo leer settings.json. La ventana se abrirá, pero debes "
+            "corregir el archivo manualmente antes de consultar. No se "
+            f"sobrescribió el archivo.\n\nDetalle: {error}",
+            parent=app,
+        )
 
     resultados_pendientes = Queue()
     resultados_actuales = []
+    animacion_consulta = {}
 
     boton_consultar.configure(command=lambda: consultar(
         app,
@@ -769,6 +885,7 @@ def main():
         cache,
         estado,
         resultados_pendientes,
+        animacion_consulta,
     ))
 
     boton_api_key.configure(command=lambda: ventana_api_key(app, refrescar_info_api))
@@ -812,7 +929,7 @@ def main():
         )
         figuras = (
             grafica_por_fecha(fechas, conteos),
-            grafica_distancia_vs_tamaño(resultados),
+            grafica_distancia_vs_tamano(resultados),
             grafica_peligrosos_no_peligrosos(resultados),
         )
 
@@ -859,6 +976,8 @@ def main():
         except Empty:
             app.after(100, procesar_resultados)
             return
+
+        detener_animacion_consulta(app, animacion_consulta)
 
         if tipo == "success":
             for identificador, despues_id in tuple(animacion_tabla.items()):

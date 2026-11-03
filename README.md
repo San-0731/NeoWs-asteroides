@@ -22,7 +22,7 @@ Aplicación en Python para consultar los asteroides cercanos a la Tierra usando 
 - Conexión a internet para las consultas nuevas.
 - En Ubuntu, dos paquetes del sistema:
   - `python3-venv`, para crear el entorno virtual.
-  - `python3-tk`, para que se abran las ventanas de las gráficas.
+  - `python3-tk`, requerido por la GUI y por las ventanas de las gráficas.
 
 ```bash
 sudo apt update
@@ -52,9 +52,13 @@ La aplicación busca la clave en este orden:
 2. La variable de entorno `NASA_API_KEY` (también se puede definir en un `.env` en la raíz del proyecto).
 3. `DEMO_KEY`, si no encuentra una clave en los pasos anteriores.
 
-Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa.
+Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. El campo la muestra enmascarada; **Mostrar API** permite verla temporalmente. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa.
 
 Los cambios se escriben primero en un archivo temporal y después reemplazan `settings.json`, para conservar la configuración anterior si el guardado se interrumpe. Si el archivo contiene JSON inválido, el lector lanza un error claro y no lo sobrescribe; corrígelo manualmente usando el formato anterior.
+
+Si `settings.json` está dañado al iniciar la GUI, se muestra un aviso y la ventana abre sin consultar la API hasta que corrijas el archivo. La aplicación no reemplaza ni borra automáticamente tus ajustes.
+
+Si los ajustes se detectan inválidos durante una consulta, la GUI informa que debes revisar `settings.json`, en lugar de presentarlo como un error de procesamiento de la respuesta de NASA.
 
 También puedes agregar manualmente tu clave con este formato:
 
@@ -84,7 +88,7 @@ Desde la raíz del proyecto, con el entorno virtual activado:
 python app.py
 ```
 
-Ingresa la fecha inicial y, opcionalmente, la fecha final; pulsa **Consultar**. Los resultados aparecen en la tabla y las visualizaciones están en la pestaña **Gráficas**, cada una en su propia subpestaña. **Exportar CSV** guarda los resultados de la última consulta exitosa. Las consultas existentes pueden servirse desde el caché sin conexión.
+Ingresa la fecha inicial y, opcionalmente, la fecha final; pulsa **Consultar**. Mientras se procesa, el estado anima `Consultando.` → `Consultando..` → `Consultando...`. Los resultados aparecen en la tabla y las visualizaciones están en la pestaña **Gráficas**, cada una en su propia subpestaña. **Exportar CSV** guarda los resultados de la última consulta exitosa. Las consultas existentes pueden servirse desde el caché sin conexión. Si ocurre un error inesperado, la GUI informa que la consulta falló, registra el tipo de error y vuelve a habilitar el botón.
 
 ### Consola
 
@@ -108,7 +112,7 @@ El programa muestra un menú de 5 opciones:
 
 ### Ubicación de los datos
 
-El caché, el CSV y los ajustes se guardan en la carpeta de datos del usuario que determina `platformdirs`, usando el autor `San-0731` y el nombre de aplicación `NeoWs-Asteroides`. La ruta depende del sistema operativo y ya no está dentro de la carpeta del proyecto. En Linux normalmente es `~/.local/share/San-0731/NeoWs-Asteroides/`; en Windows y macOS se utiliza la ubicación de datos de usuario correspondiente a cada plataforma.
+El caché, el CSV y los ajustes se guardan en la carpeta de datos del usuario que determina `platformdirs`, usando el autor `San-0731` y el nombre de aplicación `NeoWs-Asteroides`. La ruta depende del sistema operativo y ya no está dentro de la carpeta del proyecto. En Linux normalmente es `~/.local/share/NeoWs-Asteroides`; en Windows y macOS se utiliza la ubicación de datos de usuario correspondiente a cada plataforma.
 
 Al iniciar, la aplicación crea la carpeta y, si falta, `settings.json` con `NASA_API_KEY` vacío. En esa ubicación también se guardan `cache_neows.json` y `Historial_Consultas.csv`.
 
@@ -146,6 +150,10 @@ Si un dato no viene en la respuesta de la API, el campo queda en `null` y ese re
 ## Cómo funciona el caché
 
 Las respuestas se guardan en `cache_neows.json`, dentro de la carpeta de datos del usuario, con el rango de fechas exacto como clave. Si repites un rango vigente que ya consultaste, el programa lo carga del caché sin pedirlo otra vez a la API y sin necesidad de internet.
+
+La aplicación elimina el parámetro `api_key` de los enlaces recibidos antes de devolver o guardar la respuesta. Al cargar un caché creado por una versión anterior, también limpia esos enlaces y guarda el archivo actualizado.
+
+Si el archivo contiene JSON inválido o registros con una estructura incorrecta, la GUI y la CLI lo mueven a `cache_neows.json.bak` (o a un nombre numerado si ya existe un respaldo) antes de continuar con un caché vacío. Así, la consulta nueva no destruye el archivo original.
 
 La caducidad se calcula usando tiempos en UTC y depende de la fecha final del rango:
 

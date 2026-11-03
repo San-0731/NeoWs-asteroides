@@ -1,10 +1,10 @@
 import requests
 import os
-import json
 import re
 from urllib.parse import quote, quote_plus
 from dotenv import load_dotenv
-from neo_app.config import ARCHIVO_AJUSTES, leer_ajustes
+from neo_app.config import leer_ajustes
+from neo_app.sanitizacion import sanitizar_api_keys
 
 load_dotenv()
 
@@ -65,7 +65,7 @@ def peticion(fecha, fecha_final):
                 "Espera antes de volver a intentarlo o configura tu propia API key."
             )
         response.raise_for_status()
-        datos = response.json()
+        datos = sanitizar_api_keys(response.json())
     except LimiteApiError:
         raise
     except requests.exceptions.RequestException as error:

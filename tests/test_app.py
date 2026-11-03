@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 from queue import Queue
 from unittest.mock import Mock, patch
 
@@ -6,6 +8,8 @@ import app
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from requests.exceptions import ConnectionError
+from neo_app.cache import CacheFormatError
+from neo_app.config import AjustesInvalidosError
 
 
 class EntradaFalsa:
@@ -118,6 +122,7 @@ class ConsultaGuiTests(unittest.TestCase):
         cola = Queue()
         boton = Mock()
         estado = Mock()
+        animacion = {}
 
         with patch.object(app, "Thread") as hilo:
             app.consultar(
@@ -128,16 +133,113 @@ class ConsultaGuiTests(unittest.TestCase):
                 {"cached": "data"},
                 estado,
                 cola,
+                animacion,
             )
 
-        estado.configure.assert_called_once_with(text="Consultando...")
+        estado.configure.assert_called_once_with(text="Consultando.")
         boton.configure.assert_called_once_with(state="disabled")
+        self.assertTrue(animacion["activa"])
+        self.assertIsNotNone(animacion["after_id"])
         hilo.assert_called_once_with(
             target=app.trabajo_consulta,
             args=("2026-10-20", "2026-10-20", False, {"cached": "data"}, cola),
             daemon=True,
         )
         hilo.return_value.start.assert_called_once_with()
+
+    def test_animacion_de_consulta_cicla_puntos_y_se_detiene(self):
+        scheduler = SchedulerFalso()
+        estado = Mock()
+        animacion = {}
+
+        app.iniciar_animacion_consulta(scheduler, estado, animacion)
+        for _ in range(3):
+            identificador = min(scheduler.callbacks)
+            scheduler.callbacks.pop(identificador)()
+        app.detener_animacion_consulta(scheduler, animacion)
+
+        textos = [
+            llamada.kwargs["text"]
+            for llamada in estado.configure.call_args_list
+        ]
+        self.assertEqual(
+            textos,
+            ["Consultando.", "Consultando..", "Consultando...", "Consultando."],
+        )
+        self.assertFalse(animacion["activa"])
+        self.assertEqual(scheduler.callbacks, {})
+
+    def test_main_muestra_aviso_y_abre_gui_si_settings_esta_danado(self):
+        ventana = Mock()
+        panel_izquierdo = tuple(Mock() for _ in range(5))
+        zona_central = tuple(Mock() for _ in range(6))
+        barra_inferior = tuple(Mock() for _ in range(4))
+
+        with (
+            patch.object(app, "prepara_directorios_datos"),
+            patch.object(app, "set_appearance_mode"),
+            patch.object(app, "CTk", return_value=ventana),
+            patch.object(app, "cargar_cache", return_value={}),
+            patch.object(app, "panel_izquierdo", return_value=panel_izquierdo),
+            patch.object(app, "zona_central", return_value=zona_central),
+            patch.object(app, "barra_inferior", return_value=barra_inferior),
+            patch.object(
+                app,
+                "obtener_api_key",
+                side_effect=ValueError("El archivo de ajustes contiene JSON inválido."),
+            ),
+            patch.object(app.messagebox, "showwarning") as mostrar_aviso,
+        ):
+            app.main()
+
+        mostrar_aviso.assert_called_once()
+        self.assertEqual(mostrar_aviso.call_args.args[0], "Ajustes inválidos")
+        self.assertIn("settings.json", mostrar_aviso.call_args.args[1])
+        barra_inferior[1].configure.assert_called_once_with(
+            text="API Key: No disponible"
+        )
+        barra_inferior[2].configure.assert_called_once_with(
+            text="Revisa settings.json"
+        )
+        ventana.mainloop.assert_called_once_with()
+
+    def test_main_inicia_con_cache_vacio_si_el_formato_del_cache_es_invalido(self):
+        ventana = Mock()
+        panel_izquierdo = tuple(Mock() for _ in range(5))
+        zona_central = tuple(Mock() for _ in range(6))
+        barra_inferior = tuple(Mock() for _ in range(4))
+
+        with tempfile.TemporaryDirectory() as directorio:
+            ruta_cache = Path(directorio) / "cache_neows.json"
+            ruta_respaldo = Path(f"{ruta_cache}.bak")
+            contenido_danado = '{"incompleto": '
+            ruta_cache.write_text(contenido_danado, encoding="utf-8")
+
+            with (
+                patch.object(app, "prepara_directorios_datos"),
+                patch.object(app, "set_appearance_mode"),
+                patch.object(app, "CTk", return_value=ventana),
+                patch.object(app, "ARCHIVO_CACHE", ruta_cache),
+                patch.object(
+                    app,
+                    "cargar_cache",
+                    side_effect=CacheFormatError("Falta el campo 'respuesta'."),
+                ),
+                patch.object(app, "panel_izquierdo", return_value=panel_izquierdo),
+                patch.object(app, "zona_central", return_value=zona_central),
+                patch.object(app, "barra_inferior", return_value=barra_inferior),
+                patch.object(app, "obtener_api_key", return_value=("DEMO_KEY", True)),
+                patch.object(app.messagebox, "showwarning") as mostrar_aviso,
+            ):
+                app.main()
+
+            mostrar_aviso.assert_called_once()
+            self.assertEqual(mostrar_aviso.call_args.args[0], "Caché inválido")
+            self.assertIn("caché vacío", mostrar_aviso.call_args.args[1])
+            self.assertIn(ruta_respaldo.name, mostrar_aviso.call_args.args[1])
+            self.assertFalse(ruta_cache.exists())
+            self.assertEqual(ruta_respaldo.read_text(encoding="utf-8"), contenido_danado)
+            ventana.mainloop.assert_called_once_with()
 
     def test_trabajo_consulta_publica_resultados_y_mensaje_de_origen(self):
         cola = Queue()
@@ -199,6 +301,42 @@ class ConsultaGuiTests(unittest.TestCase):
         self.assertEqual(tipo, "error")
         self.assertIsNone(resultado)
         self.assertIn("límite alcanzado", mensaje)
+
+    def test_trabajo_consulta_publica_error_generico_ante_fallo_inesperado(self):
+        cola = Queue()
+
+        with (
+            patch.object(
+                app,
+                "obtener_datos",
+                side_effect=OSError("fallo local inesperado"),
+            ),
+            self.assertLogs("app", level="ERROR") as registros,
+        ):
+            app.trabajo_consulta("2026-10-20", "2026-10-20", False, {}, cola)
+
+        tipo, resultado, mensaje = cola.get_nowait()
+        self.assertEqual(tipo, "error")
+        self.assertIsNone(resultado)
+        self.assertIn("inesperado", mensaje)
+        self.assertIn("OSError", registros.output[0])
+
+    def test_trabajo_consulta_identifica_ajustes_invalidos_por_separado(self):
+        cola = Queue()
+
+        with patch.object(
+            app,
+            "obtener_datos",
+            side_effect=AjustesInvalidosError("JSON de ajustes inválido"),
+        ):
+            app.trabajo_consulta("2026-10-20", "2026-10-20", False, {}, cola)
+
+        tipo, resultado, mensaje = cola.get_nowait()
+        self.assertEqual(tipo, "error")
+        self.assertIsNone(resultado)
+        self.assertIn("ajustes", mensaje.lower())
+        self.assertIn("settings.json", mensaje)
+        self.assertNotIn("procesar la respuesta", mensaje)
 
     def test_aplica_resultado_exitoso_a_tabla_graficas_y_controles(self):
         tabla = TablaFalsa()
@@ -458,6 +596,26 @@ class VentanaApiKeyTests(unittest.TestCase):
         for mocked in self.patches:
             mocked.start()
             self.addCleanup(mocked.stop)
+
+    def test_api_key_inicia_enmascarada_y_boton_alterna_visibilidad(self):
+        app.ventana_api_key(Mock(), self.actualizar_info)
+
+        app.CTkEntry.assert_called_once()
+        self.assertEqual(app.CTkEntry.call_args.kwargs["show"], "*")
+        boton_mostrar = next(
+            llamada
+            for llamada in app.CTkButton.call_args_list
+            if llamada.kwargs.get("text") == "Mostrar API"
+        )
+        alternar_visibilidad = boton_mostrar.kwargs["command"]
+
+        alternar_visibilidad()
+        self.entrada.configure.assert_called_with(show="")
+        self.boton.configure.assert_called_with(text="Ocultar API")
+
+        alternar_visibilidad()
+        self.entrada.configure.assert_called_with(show="*")
+        self.boton.configure.assert_called_with(text="Mostrar API")
 
     def test_guardar_api_key_persiste_ajustes_y_cierra_ventana(self):
         ajustes = {"otro_ajuste": "se conserva", "NASA_API_KEY": ""}

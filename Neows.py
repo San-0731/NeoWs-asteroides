@@ -2,14 +2,14 @@ import json
 import requests #permite emular metodos del protocolo HTTP dando como respuesta un objeto de los datos obtenidos respuesta del servidor
 import matplotlib.pyplot as plt
 #-------------------------------
-from neo_app.cache import cargar_cache
+from neo_app.cache import CacheFormatError, cargar_cache, respaldar_cache_invalido
 from neo_app.fechas import solicitar_fechas
 from neo_app.api import LimiteApiError
 from neo_app.consulta import obtener_datos
 from neo_app.procesamiento import construir_datos
 from neo_app.graficas import (
     grafica_por_fecha,
-    grafica_distancia_vs_tamaño,
+    grafica_distancia_vs_tamano,
     grafica_peligrosos_no_peligrosos,
 )
 from neo_app.exportacion import exportar_a_csv
@@ -29,7 +29,7 @@ def mostrar_figura(figura):
 def menu_graficas(fechas, conteos, resultados):
     graficas = {
         1: lambda: grafica_por_fecha(fechas, conteos),
-        2: lambda: grafica_distancia_vs_tamaño(resultados),
+        2: lambda: grafica_distancia_vs_tamano(resultados),
         3: lambda: grafica_peligrosos_no_peligrosos(resultados),
     }
 
@@ -68,6 +68,19 @@ def main():
         cache = cargar_cache(ARCHIVO_CACHE)
     except (FileNotFoundError, json.JSONDecodeError) as error:
         print(f"No se pudo cargar el caché; se iniciará vacío: {error}")
+    except CacheFormatError as error:
+        try:
+            respaldo_cache = respaldar_cache_invalido(ARCHIVO_CACHE)
+        except OSError as error_respaldo:
+            print(
+                "No se pudo preservar el caché inválido; se cancela el inicio: "
+                f"{error_respaldo}"
+            )
+            return
+        print(
+            "El caché tiene una estructura inválida y se movió a "
+            f"{respaldo_cache}; se iniciará vacío: {error}"
+        )
 
     while opc != 5:
         print("\nOpciones:")
