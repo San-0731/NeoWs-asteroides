@@ -66,7 +66,9 @@ def main():
     cache = {}
     try:
         cache = cargar_cache(ARCHIVO_CACHE)
-    except (FileNotFoundError, json.JSONDecodeError) as error:
+    except FileNotFoundError:
+        cache = {}
+    except json.JSONDecodeError as error:
         print(f"No se pudo cargar el caché; se iniciará vacío: {error}")
     except CacheFormatError as error:
         try:

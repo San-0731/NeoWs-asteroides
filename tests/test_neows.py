@@ -29,6 +29,27 @@ from neo_app.exportacion import exportar_a_csv
 
 
 class FlujoCacheTests(unittest.TestCase):
+    def test_cli_inicia_sin_aviso_si_el_cache_no_existe(self):
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo_cache = Path(directorio) / "cache_neows.json"
+            with (
+                patch("builtins.input", return_value="5"),
+                patch.object(Neows, "prepara_directorios_datos"),
+                patch.object(Neows, "ARCHIVO_CACHE", archivo_cache),
+                patch.object(
+                    Neows,
+                    "cargar_cache",
+                    side_effect=FileNotFoundError(archivo_cache),
+                ),
+                patch("builtins.print") as imprimir,
+            ):
+                Neows.main()
+
+        mensajes = [str(llamada) for llamada in imprimir.call_args_list]
+        self.assertFalse(
+            any("No se pudo cargar el caché" in mensaje for mensaje in mensajes)
+        )
+
     def test_cli_avisa_y_continua_con_cache_vacio_si_el_formato_es_invalido(self):
         with tempfile.TemporaryDirectory() as directorio:
             archivo_cache = Path(directorio) / "cache_neows.json"
