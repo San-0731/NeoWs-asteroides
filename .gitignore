@@ -18,3 +18,5 @@ Guia_NAS.txt
 #Ignorar Archivos
 .~lock.*#
 /datos/
+
+*.zip

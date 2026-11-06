@@ -1,0 +1,35 @@
+name: build
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - Portable
+  pull_request:
+    branches:
+      - main
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: instalar dependencias
+        run: |
+         python -m pip install --upgrade pip
+         pip install -r requirements.txt
+      - name: construir ejecutable
+        run: |
+          pyinstaller NeoWs-Asteroides.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: dist/
+
+    
