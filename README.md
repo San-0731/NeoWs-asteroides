@@ -44,6 +44,14 @@ pip install -r requirements.txt
 
 El entorno virtual hay que activarlo (`source venv/bin/activate`) cada vez que abras una terminal nueva para usar el programa.
 
+## Versión portable
+
+Se están generando paquetes independientes por sistema operativo con PyInstaller. La versión Linux se probó en una VM con Debian 13.6 y en Ubuntu, ambos sin Python instalado, y pudo abrir la aplicación y realizar una consulta. Estas pruebas no garantizan compatibilidad con todas las distribuciones o versiones de Linux.
+
+Los paquetes de Windows y macOS también se generan, pero aún deben probarse en equipos limpios de sus respectivos sistemas. **El paquete de macOS está en prueba o pendiente de verificación**; su funcionamiento todavía no se considera confirmado.
+
+Al probar una distribución `onedir`, conserva y distribuye toda la carpeta del programa, no solo el ejecutable. Cada usuario debe configurar su propia API key desde la aplicación; no se incluye ninguna clave en los paquetes.
+
 ## Configurar la API key
 
 La aplicación obtiene la clave desde `settings.json`, dentro de la carpeta de datos del usuario. Si no encuentra una clave personal, utiliza `DEMO_KEY`.
@@ -187,12 +195,12 @@ Las pruebas no usan internet ni modifican tu caché ni tu CSV.
 
 - Solo usa el endpoint *Feed* de NeoWs (consulta por fechas). No usa *Lookup* ni *Browse*.
 - El CSV evita filas duplicadas según la pareja fecha del asteroide + nombre. Si falta alguno de esos dos datos, conserva la fila porque no puede determinar con seguridad si es duplicada.
-- Se requiere Python y las dependencias del proyecto; la GUI también necesita Tkinter disponible en el sistema.
-- Solo se ha probado en Ubuntu.
+- Para ejecutar el proyecto desde el código fuente se requiere Python, las dependencias y Tkinter disponible en el sistema.
+- La versión portable de Linux se verificó en Debian 13.6 y Ubuntu; Windows y macOS siguen pendientes de pruebas en equipos limpios. En particular, el paquete de macOS está por verificar.
 
 ## Próximos pasos
 
-- [ ] Versión portable, para usarla sin instalar Python ni las dependencias.
+- [ ] Verificar los paquetes de Windows y macOS en equipos limpios; macOS sigue en prueba.
 - [ ] README en inglés.
 
 ## Créditos
