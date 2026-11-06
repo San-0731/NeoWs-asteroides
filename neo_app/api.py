@@ -1,12 +1,10 @@
 import requests
-import os
 import re
 from urllib.parse import quote, quote_plus
-from dotenv import load_dotenv
 from neo_app.config import leer_ajustes
 from neo_app.sanitizacion import sanitizar_api_keys
 
-load_dotenv()
+
 
 
 class LimiteApiError(Exception):
@@ -39,10 +37,6 @@ def obtener_api_key():
 
     if clave_ajustes:
         return clave_ajustes, clave_ajustes == "DEMO_KEY"
-
-    clave_entorno = os.getenv("NASA_API_KEY", "").strip()
-    if clave_entorno:
-        return clave_entorno, clave_entorno == "DEMO_KEY"
 
     return "DEMO_KEY", True
 
