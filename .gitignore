@@ -13,7 +13,10 @@ __pycache__/
 *.pyc
 #PERSONAL
 Guia_NAS.txt
-
+/dist
+/build
 #Ignorar Archivos
 .~lock.*#
 /datos/
+
+*.zip

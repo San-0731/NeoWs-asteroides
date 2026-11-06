@@ -28,7 +28,7 @@ class ObtenerApiKeyTests(unittest.TestCase):
 
         self.assertEqual(resultado, ("clave_de_ajustes", False))
 
-    def test_usa_variable_de_entorno_si_no_hay_archivo(self):
+    def test_usa_demo_key_si_no_hay_ajustes_aunque_exista_variable_entorno(self):
         with tempfile.TemporaryDirectory() as directorio:
             archivo_ausente = Path(directorio) / "no_existe.json"
 
@@ -38,7 +38,20 @@ class ObtenerApiKeyTests(unittest.TestCase):
             ):
                 resultado = obtener_api_key()
 
-        self.assertEqual(resultado, ("clave_del_entorno", False))
+        self.assertEqual(resultado, ("DEMO_KEY", True))
+
+    def test_usa_demo_key_si_ajustes_no_tienen_clave_aunque_exista_variable_entorno(self):
+        with tempfile.TemporaryDirectory() as directorio:
+            archivo = Path(directorio) / "settings.json"
+            archivo.write_text(json.dumps({"NASA_API_KEY": ""}), encoding="utf-8")
+
+            with (
+                patch("neo_app.config.ARCHIVO_AJUSTES", archivo),
+                patch.dict(os.environ, {"NASA_API_KEY": "clave_del_entorno"}, clear=True),
+            ):
+                resultado = obtener_api_key()
+
+        self.assertEqual(resultado, ("DEMO_KEY", True))
 
     def test_usa_demo_key_si_no_hay_clave(self):
         with tempfile.TemporaryDirectory() as directorio:

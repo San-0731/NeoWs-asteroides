@@ -11,7 +11,7 @@ Aplicación en Python para consultar los asteroides cercanos a la Tierra usando 
 - Caché en disco: no repite peticiones que ya hizo.
 - Exportación de los resultados a CSV, evitando duplicados por la pareja fecha del asteroide + nombre.
 - Validación de fechas, manejo de errores de red y aviso específico cuando NASA limita las solicitudes (HTTP 429).
-- Clave de NASA leída, en orden, desde los ajustes del usuario, `NASA_API_KEY` o `DEMO_KEY`.
+- Clave de NASA leída desde los ajustes del usuario; usa `DEMO_KEY` si no hay una clave personal configurada.
 - Interfaz gráfica con tabla de resultados, tres gráficas en pestañas separadas, transiciones de aparición con fade y exportación CSV.
 - Configuración de la API key desde la interfaz, guardada en los ajustes del usuario.
 - Pruebas unitarias para API, caché, fechas, gráficas, procesamiento, exportación y controladores de la GUI.
@@ -44,15 +44,19 @@ pip install -r requirements.txt
 
 El entorno virtual hay que activarlo (`source venv/bin/activate`) cada vez que abras una terminal nueva para usar el programa.
 
+## Versión portable
+
+Se están generando paquetes independientes por sistema operativo con PyInstaller. La versión Linux se probó en una VM con Debian 13.6 y en Ubuntu, ambos sin Python instalado, y pudo abrir la aplicación y realizar una consulta. Estas pruebas no garantizan compatibilidad con todas las distribuciones o versiones de Linux.
+
+Los paquetes de Windows y macOS también se generan, pero aún deben probarse en equipos limpios de sus respectivos sistemas. **El paquete de macOS está en prueba o pendiente de verificación**; su funcionamiento todavía no se considera confirmado.
+
+Al probar una distribución `onedir`, conserva y distribuye toda la carpeta del programa, no solo el ejecutable. Cada usuario debe configurar su propia API key desde la aplicación; no se incluye ninguna clave en los paquetes.
+
 ## Configurar la API key
 
-La aplicación busca la clave en este orden:
+La aplicación obtiene la clave desde `settings.json`, dentro de la carpeta de datos del usuario. Si no encuentra una clave personal, utiliza `DEMO_KEY`.
 
-1. `NASA_API_KEY` en `settings.json`, dentro de la carpeta de datos del usuario.
-2. La variable de entorno `NASA_API_KEY` (también se puede definir en un `.env` en la raíz del proyecto).
-3. `DEMO_KEY`, si no encuentra una clave en los pasos anteriores.
-
-Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. El campo la muestra enmascarada; **Mostrar API** permite verla temporalmente. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa.
+Al iniciar, la aplicación crea `settings.json` con una clave vacía si todavía no existe. En la GUI, pulsa **Configurar API Key**, escribe tu clave y guárdala. El campo la muestra enmascarada; **Mostrar API** permite verla temporalmente. La barra inferior indica si la clave activa es personal o `DEMO_KEY`, pero nunca muestra la clave completa. La aplicación no carga claves desde `.env` ni desde la variable de entorno `NASA_API_KEY`.
 
 Los cambios se escriben primero en un archivo temporal y después reemplazan `settings.json`, para conservar la configuración anterior si el guardado se interrumpe. Si el archivo contiene JSON inválido, el lector lanza un error claro y no lo sobrescribe; corrígelo manualmente usando el formato anterior.
 
@@ -60,21 +64,13 @@ Si `settings.json` está dañado al iniciar la GUI, se muestra un aviso y la ven
 
 Si los ajustes se detectan inválidos durante una consulta, la GUI informa que debes revisar `settings.json`, en lugar de presentarlo como un error de procesamiento de la respuesta de NASA.
 
-También puedes agregar manualmente tu clave con este formato:
+Si necesitas agregar o recuperar tu clave manualmente, `settings.json` tiene este formato:
 
 ```json
 {
   "NASA_API_KEY": "tu_clave_aqui"
 }
 ```
-
-Como alternativa, puedes crear un `.env` en la raíz del proyecto:
-
-```env
-NASA_API_KEY=tu_clave_aqui
-```
-
-El `.env` está en `.gitignore`; no compartas ni subas claves reales al repositorio.
 
 Si no hay una clave configurada, se usa `DEMO_KEY`, que tiene límites bajos: [30 peticiones por hora y 50 al día por dirección IP](https://api.nasa.gov/assets/html/authentication.html). NASA puede responder HTTP 429 cuando se alcanza el límite; la aplicación muestra un aviso en español y recomienda esperar o configurar una clave propia. Una clave registrada permite 1.000 peticiones por hora. Las consultas servidas desde caché no hacen una petición nueva.
 
@@ -199,12 +195,12 @@ Las pruebas no usan internet ni modifican tu caché ni tu CSV.
 
 - Solo usa el endpoint *Feed* de NeoWs (consulta por fechas). No usa *Lookup* ni *Browse*.
 - El CSV evita filas duplicadas según la pareja fecha del asteroide + nombre. Si falta alguno de esos dos datos, conserva la fila porque no puede determinar con seguridad si es duplicada.
-- Se requiere Python y las dependencias del proyecto; la GUI también necesita Tkinter disponible en el sistema.
-- Solo se ha probado en Ubuntu.
+- Para ejecutar el proyecto desde el código fuente se requiere Python, las dependencias y Tkinter disponible en el sistema.
+- La versión portable de Linux se verificó en Debian 13.6 y Ubuntu; Windows y macOS siguen pendientes de pruebas en equipos limpios. En particular, el paquete de macOS está por verificar.
 
 ## Próximos pasos
 
-- [ ] Versión portable, para usarla sin instalar Python ni las dependencias.
+- [ ] Verificar los paquetes de Windows y macOS en equipos limpios; macOS sigue en prueba.
 - [ ] README en inglés.
 
 ## Créditos
