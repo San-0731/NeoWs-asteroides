@@ -1,5 +1,25 @@
+import asyncio
+import json
+import logging
 import flet as ft
 from datetime import datetime
+from requests.exceptions import RequestException
+
+from neo_app.api import LimiteApiError
+from neo_app.cache import CacheFormatError, cargar_cache, respaldar_cache_invalido
+from neo_app.config import (
+    ARCHIVO_CACHE,
+    AjustesInvalidosError,
+    prepara_directorios_datos,
+)
+from neo_app.consulta_flet import consultar_en_segundo_plano
+from neo_app.fechas import validar_rango
+from neo_app.exportacion import crear_csv_bytes
+from neo_app.presentacion_flet import (
+    crear_grafica_data_uri,
+    crear_tarjetas_resultados,
+    crear_tabla_resultados,
+)
 
 
 BACKGROUND = "#030817"
@@ -10,6 +30,9 @@ BLUE_LIGHT = "#65A8FF"
 TEXT = "#F4F7FF"
 MUTED = "#B6C8E8"
 BORDER = "#244D91"
+
+
+logger = logging.getLogger(__name__)
 
 
 def main(page: ft.Page):
@@ -27,11 +50,50 @@ def main(page: ft.Page):
     }
 
     status_text = ft.Text(
-        "Maqueta visual · la consulta todavía no está conectada",
+        "Selecciona un rango de fechas para consultar.",
         color=MUTED,
         size=13,
         text_align=ft.TextAlign.CENTER,
     )
+    cache = {}
+    datos_actuales = {
+        "resultados": [],
+        "fechas_grafica": [],
+        "conteos": [],
+        "graficas": {},
+        "consulta_realizada": False,
+        "fecha_inicio": None,
+        "fecha_final": None,
+    }
+    selector_archivo = ft.FilePicker()
+    page.services.append(selector_archivo)
+    cache_listo = True
+    try:
+        prepara_directorios_datos()
+        try:
+            cache = cargar_cache(ARCHIVO_CACHE)
+        except FileNotFoundError:
+            pass
+    except (json.JSONDecodeError, CacheFormatError) as error:
+        try:
+            respaldo_cache = respaldar_cache_invalido(ARCHIVO_CACHE)
+        except OSError as error_respaldo:
+            cache_listo = False
+            status_text.value = (
+                "No se pudo preservar el caché inválido; la consulta está "
+                f"deshabilitada. Detalle: {error_respaldo}"
+            )
+        else:
+            status_text.value = (
+                "El caché inválido se movió a "
+                f"{respaldo_cache}. Se iniciará uno nuevo. Detalle: {error}"
+            )
+    except OSError as error:
+        cache_listo = False
+        status_text.value = (
+            f"No se pudieron preparar los datos de la aplicación: {error}"
+        )
+
     start_date_text = ft.Text("Seleccionar fecha", color=TEXT, size=16)
     end_date_text = ft.Text("Seleccionar fecha", color=TEXT, size=16)
 
@@ -113,42 +175,178 @@ def main(page: ft.Page):
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=12,
     )
-    table_placeholder = ft.Column(
+    table_placeholder_text = ft.Text(
+        "Los resultados de la consulta aparecerán aquí.",
+        color=TEXT,
+        size=16,
+        text_align=ft.TextAlign.CENTER,
+    )
+    table_view = ft.Column(
         [
             ft.Icon(ft.Icons.TABLE_VIEW, color=BLUE_LIGHT, size=64),
-            ft.Text(
-                "Aquí se mostrarán los resultados en una tabla.",
-                color=TEXT,
-                size=18,
-                text_align=ft.TextAlign.CENTER,
-            ),
+            table_placeholder_text,
         ],
         alignment=ft.MainAxisAlignment.CENTER,
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=14,
+        expand=True,
+        scroll=ft.ScrollMode.AUTO,
     )
-    charts_placeholder = ft.Column(
+
+    def actualizar_tabla():
+        table_view.controls.clear()
+        resultados = datos_actuales["resultados"]
+        if not resultados:
+            table_view.alignment = ft.MainAxisAlignment.CENTER
+            table_view.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+            table_view.controls.extend(
+                [
+                    ft.Icon(ft.Icons.TABLE_VIEW, color=BLUE_LIGHT, size=64),
+                    ft.Text(
+                        "No se encontraron asteroides en ese rango.",
+                        color=TEXT,
+                        text_align=ft.TextAlign.CENTER,
+                    ),
+                ]
+            )
+        elif page.width is not None and page.width < 900:
+            table_view.controls.extend(
+                crear_tarjetas_resultados(resultados)
+            )
+            table_view.alignment = ft.MainAxisAlignment.START
+            table_view.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+        else:
+            tabla = crear_tabla_resultados(resultados)
+            table_view.controls.append(
+                ft.Row(
+                    [tabla],
+                    scroll=ft.ScrollMode.AUTO,
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                )
+            )
+            table_view.alignment = ft.MainAxisAlignment.START
+            table_view.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+
+    chart_display = ft.Container(
+        content=ft.Text(
+            "Realiza una consulta y selecciona una gráfica.",
+            color=MUTED,
+            text_align=ft.TextAlign.CENTER,
+        ),
+        height=300,
+        alignment=ft.Alignment.CENTER,
+        expand=True,
+    )
+
+    chart_buttons = {}
+    chart_specs = (
+        ("fecha", "Por fecha", "Distribución de asteroides por fecha"),
+        (
+            "distancia_tamano",
+            "Distancia / tamaño",
+            "Distancia de aproximación frente al diámetro estimado",
+        ),
+        (
+            "peligrosidad",
+            "Peligrosos",
+            "Comparación de asteroides potencialmente peligrosos",
+        ),
+    )
+    chart_buttons_row = ft.ResponsiveRow(
         [
-            ft.Icon(ft.Icons.BAR_CHART, color=BLUE_LIGHT, size=64),
-            ft.Text(
-                "Aquí aparecerán las gráficas de la consulta.",
-                color=TEXT,
-                size=18,
-                text_align=ft.TextAlign.CENTER,
-            ),
+            ft.Container(
+                content=ft.Button(
+                    label,
+                    color=TEXT,
+                    bgcolor=PANEL_LIGHT,
+                    expand=True,
+                    tooltip=descripcion,
+                ),
+                col={"phone": 6, "tablet": 4, "desktop": 4},
+            )
+            for _, label, descripcion in chart_specs
         ],
-        alignment=ft.MainAxisAlignment.CENTER,
-        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-        spacing=14,
+        columns=12,
+        breakpoints=breakpoints,
+        spacing=8,
+        run_spacing=8,
     )
+    chart_buttons = {
+        tipo: control.content
+        for (tipo, _, _), control in zip(chart_specs, chart_buttons_row.controls)
+    }
+
+    charts_view = ft.Column(
+        [chart_buttons_row, chart_display],
+        spacing=10,
+        expand=True,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+
+    async def seleccionar_grafica(tipo):
+        if not datos_actuales["consulta_realizada"]:
+            chart_display.content = ft.Text(
+                "Primero realiza una consulta para ver las gráficas.",
+                color=MUTED,
+                text_align=ft.TextAlign.CENTER,
+            )
+            page.update()
+            return
+
+        for graph_type, button in chart_buttons.items():
+            button.bgcolor = BLUE if graph_type == tipo else PANEL_LIGHT
+
+        chart_display.content = ft.ProgressRing(color=BLUE_LIGHT)
+        page.update()
+
+        try:
+            uri = datos_actuales["graficas"].get(tipo)
+            if uri is None:
+                uri = await asyncio.to_thread(
+                    crear_grafica_data_uri,
+                    tipo,
+                    datos_actuales["fechas_grafica"],
+                    datos_actuales["conteos"],
+                    datos_actuales["resultados"],
+                )
+                datos_actuales["graficas"][tipo] = uri
+        except Exception as error:
+            logger.exception(
+                "No se pudo generar la gráfica '%s' (%s).",
+                tipo,
+                type(error).__name__,
+            )
+            chart_display.content = ft.Text(
+                "No se pudo generar esta gráfica. Inténtalo de nuevo.",
+                color=MUTED,
+                text_align=ft.TextAlign.CENTER,
+            )
+            status_text.value = "Error al generar la gráfica."
+        else:
+            chart_display.content = ft.Image(
+                src=uri,
+                fit=ft.BoxFit.CONTAIN,
+                expand=True,
+            )
+        finally:
+            page.update()
+
+    def crear_manejador_grafica(tipo):
+        async def manejar_click(_):
+            await seleccionar_grafica(tipo)
+
+        return manejar_click
+
+    for tipo, button in chart_buttons.items():
+        button.on_click = crear_manejador_grafica(tipo)
 
     content_panel = ft.Container(
         content=empty_state,
         bgcolor=PANEL,
         border=ft.Border.all(1, BORDER),
         border_radius=24,
-        padding=24,
-        height=310,
+        padding=16,
+        height=430,
         alignment=ft.Alignment.CENTER,
     )
     table_button = ft.Button(
@@ -170,15 +368,20 @@ def main(page: ft.Page):
         status_text.value = f"{action}: esta función se conectará en el siguiente paso."
         page.update()
 
+    vista_actual = {"valor": "empty"}
+
     def select_view(view: str):
         if view == "table":
-            content_panel.content = table_placeholder
+            if datos_actuales["resultados"]:
+                actualizar_tabla()
+            content_panel.content = table_view
             table_button.bgcolor = BLUE
             charts_button.bgcolor = PANEL_LIGHT
         else:
-            content_panel.content = charts_placeholder
+            content_panel.content = charts_view
             table_button.bgcolor = PANEL_LIGHT
             charts_button.bgcolor = BLUE
+        vista_actual["valor"] = view
         page.update()
 
     table_button.on_click = lambda _: select_view("table")
@@ -221,7 +424,7 @@ def main(page: ft.Page):
         bgcolor=BLUE,
         height=58,
         expand=True,
-        on_click=lambda _: show_placeholder_status("Consulta"),
+        disabled=not cache_listo,
     )
     export_button = ft.Button(
         "Exportar CSV",
@@ -230,8 +433,168 @@ def main(page: ft.Page):
         bgcolor=PANEL_LIGHT,
         height=58,
         expand=True,
-        on_click=lambda _: show_placeholder_status("Exportación CSV"),
+        disabled=True,
     )
+
+    async def consultar(_):
+        if not cache_listo:
+            status_text.value = (
+                "La consulta está deshabilitada porque no se pudo preparar "
+                "el caché."
+            )
+            page.update()
+            return
+
+        if start_date_picker.value is None:
+            status_text.value = "Error: selecciona una fecha inicial."
+            page.update()
+            return
+
+        fecha_inicial = start_date_picker.value.strftime("%Y-%m-%d")
+        fecha_final_texto = (
+            end_date_picker.value.strftime("%Y-%m-%d")
+            if end_date_picker.value is not None
+            else fecha_inicial
+        )
+        try:
+            fecha, fecha_final, fecha_recortada = validar_rango(
+                fecha_inicial,
+                fecha_final_texto,
+            )
+        except ValueError as error:
+            status_text.value = f"Error de validación: {error}"
+            page.update()
+            return
+
+        if fecha_recortada:
+            end_date_picker.value = datetime.fromisoformat(fecha_final)
+            end_date_text.value = fecha_final
+
+        query_button.disabled = True
+        status_text.value = "Consultando NASA…"
+        page.update()
+
+        try:
+            (
+                resultados,
+                datos_actuales["fechas_grafica"],
+                datos_actuales["conteos"],
+                desde_cache,
+                es_demo,
+            ) = await consultar_en_segundo_plano(
+                fecha,
+                fecha_final,
+                cache,
+                ARCHIVO_CACHE,
+            )
+            datos_actuales["resultados"] = resultados
+            datos_actuales["consulta_realizada"] = True
+            datos_actuales["fecha_inicio"] = fecha
+            datos_actuales["fecha_final"] = fecha_final
+        except LimiteApiError as error:
+            status_text.value = f"Error: {error}"
+        except RequestException as error:
+            status_text.value = f"Error de red: {error}"
+        except AjustesInvalidosError as error:
+            status_text.value = f"Los ajustes son inválidos: {error}"
+        except ValueError as error:
+            status_text.value = f"Error al procesar la respuesta: {error}"
+        except (KeyError, TypeError) as error:
+            status_text.value = (
+                f"La respuesta de NASA tiene un formato inesperado: {error}"
+            )
+        except Exception as error:
+            logger.error(
+                "Error inesperado durante la consulta Flet (%s).",
+                type(error).__name__,
+            )
+            status_text.value = (
+                "Ocurrió un error inesperado durante la consulta. "
+                "Revisa la configuración e inténtalo de nuevo."
+            )
+        else:
+            origen = "caché" if desde_cache else "API"
+            mensaje = (
+                f"Consulta exitosa: {len(resultados)} asteroide(s), "
+                f"datos desde {origen}."
+            )
+            if not desde_cache:
+                mensaje += " Se usó DEMO_KEY." if es_demo else " Clave personal."
+            if fecha_recortada:
+                mensaje += f" Rango recortado a {fecha} - {fecha_final}."
+
+            actualizar_tabla()
+            export_button.disabled = not resultados
+            datos_actuales["graficas"].clear()
+            chart_display.content = ft.Text(
+                "Selecciona una gráfica para visualizarla.",
+                color=MUTED,
+                text_align=ft.TextAlign.CENTER,
+            )
+            for button in chart_buttons.values():
+                button.bgcolor = PANEL_LIGHT
+            status_text.value = mensaje
+            select_view("table")
+        finally:
+            query_button.disabled = False
+            page.update()
+
+    query_button.on_click = consultar
+
+    async def exportar(_):
+        resultados = datos_actuales["resultados"]
+        if not resultados:
+            status_text.value = (
+                "No hay resultados para exportar. Realiza una consulta primero."
+            )
+            page.update()
+            return
+
+        export_button.disabled = True
+        status_text.value = "Preparando el archivo CSV…"
+        page.update()
+
+        try:
+            contenido = await asyncio.to_thread(crear_csv_bytes, resultados)
+            if contenido is None:
+                status_text.value = (
+                    "No hay resultados para exportar. Realiza una consulta primero."
+                )
+                return
+
+            nombre_archivo = (
+                f"asteroides_{datos_actuales['fecha_inicio']}_"
+                f"{datos_actuales['fecha_final']}.csv"
+            )
+            ruta_guardada = await selector_archivo.save_file(
+                dialog_title="Guardar resultados como CSV",
+                file_name=nombre_archivo,
+                file_type=ft.FilePickerFileType.CUSTOM,
+                allowed_extensions=["csv"],
+                src_bytes=contenido,
+            )
+        except Exception as error:
+            logger.exception(
+                "No se pudo exportar la consulta a CSV (%s).",
+                type(error).__name__,
+            )
+            status_text.value = (
+                f"No se pudo exportar el archivo CSV: {error}"
+            )
+        else:
+            if ruta_guardada:
+                status_text.value = f"CSV exportado en: {ruta_guardada}"
+            elif page.web or page.platform.is_mobile():
+                status_text.value = (
+                    f"Se inició la descarga de {nombre_archivo}."
+                )
+            else:
+                status_text.value = "Exportación cancelada."
+        finally:
+            export_button.disabled = not datos_actuales["resultados"]
+            page.update()
+
+    export_button.on_click = exportar
 
     header = ft.Row(
         [
@@ -278,6 +641,8 @@ def main(page: ft.Page):
         is_mobile = page.width is not None and page.width < 600
         mobile_menu.visible = is_mobile
         desktop_navigation.visible = not is_mobile
+        if vista_actual["valor"] == "table" and datos_actuales["resultados"]:
+            actualizar_tabla()
         page.update()
 
     page.on_resize = update_navigation_visibility

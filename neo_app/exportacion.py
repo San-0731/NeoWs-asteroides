@@ -2,6 +2,8 @@
 import csv
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
 
 def exportar_a_csv(resultados, nombre_archivo):
     ruta_archivo = Path(nombre_archivo)
@@ -59,3 +61,13 @@ def exportar_a_csv(resultados, nombre_archivo):
             })
             if clave is not None:
                 claves_existentes.add(clave)
+
+
+def crear_csv_bytes(resultados):
+    if not resultados:
+        return None
+
+    with TemporaryDirectory() as directorio:
+        archivo_temporal = Path(directorio) / "asteroides.csv"
+        exportar_a_csv(resultados, archivo_temporal)
+        return archivo_temporal.read_bytes()
