@@ -204,6 +204,33 @@ class FlujoCacheTests(unittest.TestCase):
 
 
 class ObtenerDatosTests(unittest.TestCase):
+    def test_pasa_clave_de_sesion_a_la_peticion_api(self):
+        fecha = date.today().isoformat()
+        api_key = "clave_de_sesion_web"
+        respuesta = {"dato": "api"}
+
+        with (
+            patch(
+                "neo_app.consulta.peticion",
+                return_value=(respuesta, False),
+            ) as peticion,
+            patch("neo_app.consulta.guardar_cache"),
+        ):
+            resultado = obtener_datos(
+                fecha,
+                fecha,
+                {},
+                Neows.ARCHIVO_CACHE,
+                api_key=api_key,
+            )
+
+        self.assertEqual(resultado, (respuesta, False, False))
+        peticion.assert_called_once_with(
+            fecha,
+            fecha,
+            api_key=api_key,
+        )
+
     def test_respuesta_y_cache_no_persisten_api_key_en_enlaces(self):
         fecha = date.today().isoformat()
         api_key = "clave-secreta-prueba"

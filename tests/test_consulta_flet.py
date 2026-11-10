@@ -11,6 +11,47 @@ from neo_app.consulta_flet import (
 
 
 class ConsultaFletTests(unittest.TestCase):
+    def test_pasa_clave_de_sesion_a_obtener_datos(self):
+        fecha = "2024-05-20"
+        fecha_final = "2024-05-21"
+        cache = {}
+        archivo_cache = Path("cache_neows.json")
+        api_key = "clave_de_sesion_web"
+        respuesta = {"near_earth_objects": {}}
+        filas = [{"Fecha": fecha, "Name": "Asteroide de prueba"}]
+        fechas = [fecha]
+        conteos = [1]
+
+        with (
+            patch(
+                "neo_app.consulta_flet.obtener_datos",
+                return_value=(respuesta, False, False),
+            ) as obtener,
+            patch(
+                "neo_app.consulta_flet.construir_datos",
+                return_value=(filas, fechas, conteos),
+            ),
+        ):
+            resultado = consultar_y_procesar(
+                fecha,
+                fecha_final,
+                cache,
+                archivo_cache,
+                api_key=api_key,
+            )
+
+        obtener.assert_called_once_with(
+            fecha,
+            fecha_final,
+            cache,
+            archivo_cache,
+            api_key=api_key,
+        )
+        self.assertEqual(
+            resultado,
+            (filas, fechas, conteos, False, False),
+        )
+
     def test_consulta_y_procesa_datos_sin_interactuar_con_la_interfaz(self):
         fecha = "2024-05-20"
         fecha_final = "2024-05-21"
@@ -52,6 +93,35 @@ class ConsultaFletTests(unittest.TestCase):
 
 
 class ConsultaEnSegundoPlanoTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reenvia_clave_de_sesion_al_trabajo_en_segundo_plano(self):
+        fecha = "2024-05-20"
+        fecha_final = "2024-05-21"
+        cache = {}
+        archivo_cache = Path("cache_neows.json")
+        api_key = "clave_de_sesion_web"
+        resultado_esperado = "resultado"
+
+        with patch(
+            "neo_app.consulta_flet.consultar_y_procesar",
+            return_value=resultado_esperado,
+        ) as consultar:
+            resultado = await consultar_en_segundo_plano(
+                fecha,
+                fecha_final,
+                cache,
+                archivo_cache,
+                api_key=api_key,
+            )
+
+        self.assertEqual(resultado, resultado_esperado)
+        consultar.assert_called_once_with(
+            fecha,
+            fecha_final,
+            cache,
+            archivo_cache,
+            api_key,
+        )
+
     async def test_consulta_no_bloquea_el_ciclo_de_eventos(self):
         trabajo_iniciado = Event()
         liberar_trabajo = Event()

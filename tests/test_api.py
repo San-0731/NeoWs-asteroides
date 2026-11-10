@@ -67,6 +67,29 @@ class ObtenerApiKeyTests(unittest.TestCase):
 
 
 class PeticionTests(unittest.TestCase):
+    def test_usa_clave_recibida_sin_leer_ajustes_globales(self):
+        api_key = "clave_de_sesion_web"
+        respuesta = Mock()
+        respuesta.json.return_value = {"dato": "respuesta"}
+
+        with (
+            patch("neo_app.api.obtener_api_key") as obtener,
+            patch("neo_app.api.requests.get", return_value=respuesta) as get,
+        ):
+            resultado = peticion(
+                "2024-05-20",
+                "2024-05-20",
+                api_key=api_key,
+            )
+
+        self.assertEqual(resultado, ({"dato": "respuesta"}, False))
+        self.assertEqual(
+            get.call_args.kwargs["params"]["api_key"],
+            api_key,
+        )
+        obtener.assert_not_called()
+        respuesta.raise_for_status.assert_called_once_with()
+
     def test_envia_clave_y_devuelve_si_es_demo(self):
         respuesta = Mock()
         respuesta.json.return_value = {"dato": "respuesta"}

@@ -40,8 +40,12 @@ def obtener_api_key():
 
     return "DEMO_KEY", True
 
-def peticion(fecha, fecha_final):
-    nasa_api_key, es_demo = obtener_api_key()
+def peticion(fecha, fecha_final, api_key=None):
+    if api_key is None:
+        nasa_api_key, es_demo = obtener_api_key()
+    else:
+        nasa_api_key = api_key.strip() or "DEMO_KEY"
+        es_demo = nasa_api_key == "DEMO_KEY"
     website_request = "https://api.nasa.gov/neo/rest/v1/feed"
 
     query = {

@@ -8,7 +8,7 @@ from neo_app.cache import esta_vencida, guardar_cache
 logger = logging.getLogger(__name__)
 
 
-def obtener_datos(fecha, fecha_final, cache, archivo_cache):
+def obtener_datos(fecha, fecha_final, cache, archivo_cache, api_key=None):
     clave = (fecha, fecha_final)
     entrada = cache.get(clave)
 
@@ -23,7 +23,10 @@ def obtener_datos(fecha, fecha_final, cache, archivo_cache):
     if entrada is not None:
         return entrada["respuesta"], True, False
 
-    datos, es_demo = peticion(fecha, fecha_final)
+    if api_key is None:
+        datos, es_demo = peticion(fecha, fecha_final)
+    else:
+        datos, es_demo = peticion(fecha, fecha_final, api_key=api_key)    
     cache[clave] = {
         "respuesta": datos,
         "guardado_en": datetime.now().astimezone().isoformat(),

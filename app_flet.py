@@ -65,6 +65,7 @@ def main(page: ft.Page):
         "fecha_inicio": None,
         "fecha_final": None,
     }
+    api_key_sesion = {"valor": None}
     selector_archivo = ft.FilePicker()
     page.services.append(selector_archivo)
     cache_listo = True
@@ -364,10 +365,6 @@ def main(page: ft.Page):
         expand=True,
     )
 
-    def show_placeholder_status(action: str):
-        status_text.value = f"{action}: esta función se conectará en el siguiente paso."
-        page.update()
-
     vista_actual = {"valor": "empty"}
 
     def select_view(view: str):
@@ -387,13 +384,72 @@ def main(page: ft.Page):
     table_button.on_click = lambda _: select_view("table")
     charts_button.on_click = lambda _: select_view("charts")
 
+    api_key_field = ft.TextField(
+        label="NASA API Key",
+        password=True,
+        can_reveal_password=True,
+        autofocus=True,
+        border_color=BORDER,
+        focused_border_color=BLUE_LIGHT,
+    )
+
+    def cerrar_configuracion_api(_=None):
+        page.pop_dialog()
+
+    def guardar_api_key_sesion(_):
+        api_key = api_key_field.value.strip() if api_key_field.value else ""
+        api_key_sesion["valor"] = api_key or None
+        clave_status_text.value = (
+            "Clave personal activa en esta sesión."
+            if api_key_sesion["valor"]
+            else "Se usará la clave local o DEMO_KEY."
+        )
+        status_text.value = (
+            "La clave se usará solo durante esta sesión de Flet; "
+            "todavía no se guarda."
+        )
+        cerrar_configuracion_api()
+        page.update()
+
+    api_key_dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Configurar NASA API Key"),
+        content=ft.Column(
+            [
+                api_key_field,
+                ft.Text(
+                    "La clave se mantiene en memoria durante esta sesión. "
+                    "No se guarda en el archivo de ajustes.",
+                    color=MUTED,
+                    size=13,
+                ),
+            ],
+            tight=True,
+            spacing=12,
+        ),
+        actions=[
+            ft.TextButton("Cancelar", on_click=cerrar_configuracion_api),
+            ft.Button(
+                "Usar clave",
+                on_click=guardar_api_key_sesion,
+                bgcolor=BLUE,
+                color=TEXT,
+            ),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    def abrir_configuracion_api(_):
+        api_key_field.value = api_key_sesion["valor"] or ""
+        page.show_dialog(api_key_dialog)
+
     settings_button = ft.Button(
         "Configurar API Key",
         icon=ft.Icons.KEY,
         color=TEXT,
         bgcolor=PANEL_LIGHT,
         expand=True,
-        on_click=lambda _: show_placeholder_status("Ajustes"),
+        on_click=abrir_configuracion_api,
     )
     mobile_menu = ft.PopupMenuButton(
         icon=ft.Icons.MENU,
@@ -413,7 +469,7 @@ def main(page: ft.Page):
             ft.PopupMenuItem(
                 content="Configurar API Key",
                 icon=ft.Icons.KEY,
-                on_click=lambda _: show_placeholder_status("Ajustes"),
+                on_click=abrir_configuracion_api,
             ),
         ],
     )
@@ -475,6 +531,9 @@ def main(page: ft.Page):
         page.update()
 
         try:
+            api_key_consulta = api_key_sesion["valor"]
+            if page.web and api_key_consulta is None:
+                api_key_consulta = "DEMO_KEY"
             (
                 resultados,
                 datos_actuales["fechas_grafica"],
@@ -486,6 +545,7 @@ def main(page: ft.Page):
                 fecha_final,
                 cache,
                 ARCHIVO_CACHE,
+                api_key=api_key_consulta,
             )
             datos_actuales["resultados"] = resultados
             datos_actuales["consulta_realizada"] = True
@@ -540,6 +600,12 @@ def main(page: ft.Page):
             page.update()
 
     query_button.on_click = consultar
+
+    clave_status_text = ft.Text(
+        "Se usará la clave local o DEMO_KEY.",
+        color=MUTED,
+        size=13,
+    )
 
     async def exportar(_):
         resultados = datos_actuales["resultados"]
@@ -695,7 +761,7 @@ def main(page: ft.Page):
                 content=ft.Row(
                     [
                         ft.Icon(ft.Icons.KEY, color=BLUE_LIGHT, size=18),
-                        ft.Text("Clave: DEMO_KEY", color=MUTED, size=13),
+                        clave_status_text,
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
