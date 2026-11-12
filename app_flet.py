@@ -396,14 +396,19 @@ def main(page: ft.Page):
     def cerrar_configuracion_api(_=None):
         page.pop_dialog()
 
+    api_active=ft.Text("Configure Su clave", color=MUTED, size=13, text_align=ft.TextAlign.CENTER)
+    
+    def clave_activa():
+        if api_key_sesion["valor"]:
+            return "Clave personal (esta sesión)"
+        return "DEMO_KEY"
+
+    api_active.value = f"Clave usada: {clave_activa()}"
+    
     def guardar_api_key_sesion(_):
         api_key = api_key_field.value.strip() if api_key_field.value else ""
         api_key_sesion["valor"] = api_key or None
-        clave_status_text.value = (
-            "Clave personal activa en esta sesión."
-            if api_key_sesion["valor"]
-            else "Se usará la clave local o DEMO_KEY."
-        )
+        api_active.value = f"Clave usada: {clave_activa()}"
         status_text.value = (
             "La clave se usará solo durante esta sesión de Flet; "
             "todavía no se guarda."
@@ -491,6 +496,29 @@ def main(page: ft.Page):
         expand=True,
         disabled=True,
     )
+    api_status_dot=ft.Icon(ft.Icons.CIRCLE, color=ft.Colors.GREEN, size=12)
+    api_status_text=ft.Text("Listo",color=MUTED, size=13, text_align=ft.TextAlign.CENTER,)
+
+    ESTADOS_API = {
+    "api": ("Éxito", ft.Colors.GREEN),
+    "cache": ("Éxito", ft.Colors.GREEN),
+    "error": ("Error", ft.Colors.RED),
+    }
+
+    def mostrar_estado_api(estado):
+        texto, color = ESTADOS_API[estado]
+        api_status_text.value = texto
+        api_status_dot.color = color
+        page.update()
+
+    async def puntos(etiqueta):
+        n = 0
+        while True:
+            n = n % 3 + 1
+            api_status_text.value = f"{etiqueta}{'.' * n}"
+            api_status_dot.color = BLUE_LIGHT
+            page.update()
+            await asyncio.sleep(0.4)
 
     async def consultar(_):
         if not cache_listo:
@@ -527,8 +555,10 @@ def main(page: ft.Page):
             end_date_text.value = fecha_final
 
         query_button.disabled = True
-        status_text.value = "Consultando NASA…"
+        estado_final = "error"
         page.update()
+
+        tarea = asyncio.create_task(puntos("Consultando"))
 
         try:
             api_key_consulta = api_key_sesion["valor"]
@@ -573,13 +603,12 @@ def main(page: ft.Page):
                 "Revisa la configuración e inténtalo de nuevo."
             )
         else:
-            origen = "caché" if desde_cache else "API"
+            estado_final = "cache" if desde_cache else "api"
+            origen = "cache" if desde_cache else "API"
             mensaje = (
                 f"Consulta exitosa: {len(resultados)} asteroide(s), "
                 f"datos desde {origen}."
             )
-            if not desde_cache:
-                mensaje += " Se usó DEMO_KEY." if es_demo else " Clave personal."
             if fecha_recortada:
                 mensaje += f" Rango recortado a {fecha} - {fecha_final}."
 
@@ -596,16 +625,17 @@ def main(page: ft.Page):
             status_text.value = mensaje
             select_view("table")
         finally:
+            tarea.cancel()
+            try:
+                await tarea
+            except asyncio.CancelledError:
+                pass
+
+            mostrar_estado_api(estado_final)
             query_button.disabled = False
             page.update()
 
     query_button.on_click = consultar
-
-    clave_status_text = ft.Text(
-        "Se usará la clave local o DEMO_KEY.",
-        color=MUTED,
-        size=13,
-    )
 
     async def exportar(_):
         resultados = datos_actuales["resultados"]
@@ -741,27 +771,24 @@ def main(page: ft.Page):
         spacing=12,
         run_spacing=12,
     )
+   
     connection_status = ft.ResponsiveRow(
         [
             ft.Container(
                 content=ft.Row(
                     [
-                        ft.Icon(
-                            ft.Icons.CIRCLE,
-                            color=ft.Colors.GREEN,
-                            size=12,
-                        ),
-                        ft.Text("API NASA · estado visual", color=MUTED, size=13),
+                        api_status_dot,
+                        api_status_text
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
+                    spacing=8,
                 ),
                 col=responsive_columns,
             ),
             ft.Container(
                 content=ft.Row(
                     [
-                        ft.Icon(ft.Icons.KEY, color=BLUE_LIGHT, size=18),
-                        clave_status_text,
+                        api_active,
                     ],
                     alignment=ft.MainAxisAlignment.CENTER,
                 ),
@@ -806,5 +833,5 @@ def main(page: ft.Page):
     )
     update_navigation_visibility()
 
-
-ft.run(main)
+if __name__ == "__main__":
+    ft.run(main)
