@@ -422,8 +422,12 @@ def main(page: ft.Page):
         content=ft.Column(
             [
                 api_key_field,
+                ft.TextButton(
+                    "Solicitar API Key gratis en NASA",
+                    url="https://api.nasa.gov/",
+                ),
                 ft.Text(
-                    "La clave se mantiene en memoria durante esta sesión. "
+                    "“Se envía al servidor de esta aplicación solo para hacer la consulta "
                     "No se guarda en el archivo de ajustes.",
                     color=MUTED,
                     size=13,
