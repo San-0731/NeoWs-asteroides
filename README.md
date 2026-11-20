@@ -6,13 +6,8 @@ Look up asteroids that pass close to Earth using NASA's **NeoWs** API. The proje
 
 > Independent personal project. Not affiliated with or endorsed by NASA.
 
-**Live demo:** [https://YOUR-APP.onrender.com](https://YOUR-APP.onrender.com)
+**Live demo:** [https://neows-asteroides.onrender.com](https://neows-asteroides.onrender.com)
 *(Hosted on a free tier: if nobody has used it recently, the first load can take about a minute while the server wakes up. See [Using the web app](#using-the-web-app).)*
-
-<!-- Screenshots: add them under docs/img/ and uncomment.
-![Web app](docs/img/web.png)
-![Desktop GUI](docs/img/gui.png)
--->
 
 ## Features
 
