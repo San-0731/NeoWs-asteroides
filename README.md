@@ -24,7 +24,7 @@ Look up asteroids that pass close to Earth using NASA's **NeoWs** API. The proje
 
 | Option | Best for | How |
 |---|---|---|
-| **Web app** | Trying it in one click, including from a phone | Open the [live demo](https://YOUR-APP.onrender.com) |
+| **Web app** | Trying it in one click, including from a phone | Open the [live demo](https://neows-asteroides.onrender.com) |
 | **Portable desktop app** | Using it without installing Python | Download from [Releases](https://github.com/San-0731/NeoWs-asteroides/releases/latest) |
 | **From source** | Development, console menu | See [Installation](#installation-from-source) |
 
